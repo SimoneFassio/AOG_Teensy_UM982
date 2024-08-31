@@ -1,0 +1,57 @@
+/* 
+ * Kalman Filter for Two Sensors
+ * 
+ * This code demonstrates a simple Kalman filter implementation using two sensors
+ * with different variances to estimate the true roll.
+ * 
+ * Author: R.JL. Fétick (modified by Simone)
+ * Revision: 15 Aug 2024
+ */
+
+#include <Kalman.h>
+using namespace BLA;
+
+//------------------------------------
+//****       KALMAN PARAMETERS    ****
+//------------------------------------
+
+// Dimensions of the matrices
+#define Nstate 2 // length of the state vector (temperature)
+#define Nobs 2   // length of the measurement vector (two sensors)
+
+// Measurement noise variances (sensor 1 and sensor 2)
+float R1 = 0.4; // Variance of WT61
+float R2 = 0.3; // Variance of dual roll
+
+// Process noise variance (uncertainty in the model)
+float Q = 0.01;
+
+KALMAN<Nstate, Nobs> kalman;  // Kalman filter object
+BLA::Matrix<Nobs> obs; // observation vector
+
+void setupKF() {
+  // Initialize the Kalman filter
+  kalman.F = {1.0};                         // State transition matrix
+  kalman.Q = {Q, 0.0, 
+              0.0, Q};                          // Process noise covariance
+  kalman.H = {1.0, 0.0, 
+              0.0, 1.0};                    // Measurement matrix
+  kalman.R = {R1, 0.0, 
+              0.0, R2};            // Measurement noise covariance
+
+  Serial.println("Kalman Filter for Two Sensors Initialized");
+}
+
+void updateKF() {
+  
+  // Fill the measurement vector
+  obs(0) = rollWT;
+  obs(1) = rollDual;
+
+  kalman.update(obs);
+
+  //rollKalman = kalman.x(0);
+  // Print the updated temperature estimate
+  //Serial.print("rollKalman:");
+  //Serial.println(rollKalman);  // Print the estimated temperature
+}

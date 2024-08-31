@@ -9,6 +9,13 @@
 "Barrowed" Keya code from Matt Elias @ https://github.com/m-elias/AgOpenGPS_Boards/tree/575R-Keya/TeensyModules/V4.1"
 */
 
+uint8_t keyaEncoderQuery[] = {0x40, 0x04, 0x21, 0x01};
+uint8_t keyaEncoderSpeedQuery[] = {0x40, 0x03, 0x21, 0x01};
+
+/// to move
+int indexBuffer=0;
+
+
 ////////////////// User Settings /////////////////////////
 
 // How many degrees before decreasing Max PWM
@@ -20,6 +27,8 @@
      3921hz = 2
 */
 #define PWM_Frequency 0
+
+#define KEYA_OFFSET_INCREMENT 2 // 1->about 0.5°/s
 
 /////////////////////////////////////////////
 
@@ -41,7 +50,7 @@
 //--------------------------- Switch Input Pins ------------------------
 #define STEERSW_PIN 32
 #define WORKSW_PIN 34
-#define REMOTE_PIN 37
+#define REMOTE_PIN 37 //reboot teensy  //debug
 
 // Define sensor pin for current or pressure sensor
 #define CURRENT_SENSOR_PIN A17
@@ -90,7 +99,7 @@ int8_t PGN_253_Size = sizeof(PGN_253) - 1;
 uint8_t PGN_250[] = {0x80, 0x81, 126, 0xFA, 8, 0, 0, 0, 0, 0, 0, 0, 0, 0xCC};
 int8_t PGN_250_Size = sizeof(PGN_250) - 1;
 uint8_t aog2Count = 0;
-float sensorReading;
+float sensorReading = 0;
 float sensorSample;
 
 elapsedMillis gpsSpeedUpdateTimer = 0;
@@ -116,9 +125,29 @@ float gpsSpeed = 0;
 
 // steering variables
 float steerAngleActual = 0;
+float steerAngleSens = 0;
 float steerAngleSetPoint = 0; // the desired angle from AgOpen
 int16_t steeringPosition = 0; // from steering sensor
 float steerAngleError = 0;    // setpoint - actual
+int32_t keyaEncoderValue = 0;
+float keyaEncoderSpeed = 0;
+float dualWheelAngle = 0;
+int8_t workingDir = 1; // 1 forward, -1 reverse
+float dualWheelAngleIMU = 0;
+float dualWheelAngleWT61 = 0;
+
+float dualWheelAngleV[400];
+float dualWheelAngleWT61V[400];
+float dualWheelAngleAverage=0;
+int indexV=0;
+int indexWT61V=0;
+
+int32_t keyaEncoderOffset = 0;
+int32_t keyaEncoderOffsetNew = 0;
+int32_t keyaEncoderOffsetWT = 0;
+int32_t keyaEncoderOffsetTiny = 0;
+int32_t keyaEncoderOffsetNewWT = 0;
+
 
 // pwm variables
 int16_t pwmDrive = 0, pwmDisplay = 0;
@@ -128,9 +157,6 @@ float highLowPerDeg = 0;
 
 // Steer switch button  ***********************************************************************************************************
 uint8_t currentState = 1, reading, previous = 0;
-uint8_t pulseCount = 0; // Steering Wheel Encoder
-bool encEnable = false; // debounce flag
-uint8_t thisEnc = 0, lastEnc = 0;
 
 // Variables for settings
 struct Storage
@@ -163,8 +189,6 @@ struct Setup
   uint8_t IsUseY_Axis = 0; // Set to 0 to use X Axis, 1 to use Y avis
 };
 Setup steerConfig; // 9 bytes
-
-// #include "sections.h"
 
 void steerConfigInit()
 {
@@ -271,7 +295,6 @@ void autosteerSetup()
   adc.setSampleRate(ADS1115_REG_CONFIG_DR_128SPS); // 128 samples per second
   adc.setGain(ADS1115_REG_CONFIG_PGA_6_144V);
 
-  // sectionSetup();
   pinMode(A12, INPUT_PULLUP);
 
 } // End of Setup
@@ -289,9 +312,6 @@ void autosteerLoop()
   if (currentTime - autsteerLastTime >= LOOP_TIME)
   {
     autsteerLastTime = currentTime;
-
-    // reset debounce
-    encEnable = true;
 
     // If connection lost to AgOpenGPS, the watchdog will count up and turn off steering
     if (watchdogTimer++ > 250)
@@ -357,12 +377,10 @@ void autosteerLoop()
       }
     }
 
-    if (steerConfig.ShaftEncoder && pulseCount >= steerConfig.PulseCountMax)
-    {
-      steerSwitch = 1; // reset values like it turned off
-      currentState = 1;
-      previous = 0;
-    }
+    // if (steerConfig.ShaftEncoder)  //when active no offest for initial calibration
+    // {
+    //   //keyaEncoderOffset=0;
+    // }
 
     // Pressure sensor?
     if (steerConfig.PressureSensor)
@@ -383,7 +401,8 @@ void autosteerLoop()
     {
       if (keyaDetected) // means Keya HB was detected
       {
-        sensorReading = sensorReading * 0.7 + KeyaCurrentSensorReading * 0.3; // then use keya current data
+        sensorReading =  KeyaCurrentRapportSmooth; // then use keya current data
+        sensorReading = min(sensorReading, 255);
       }
       else // otherwise continue using analog input on PCB
       {
@@ -401,7 +420,7 @@ void autosteerLoop()
       }
     }
 
-    remoteSwitch = digitalRead(REMOTE_PIN); // read auto steer enable switch open = 0n closed = Off
+    remoteSwitch = digitalRead(REMOTE_PIN);
     if (!remoteSwitch)
     {
       SCB_AIRCR = 0x05FA0004; // Teensy Reboot
@@ -441,22 +460,103 @@ void autosteerLoop()
 
     // DETERMINE ACTUAL STEERING POSITION
 
-    // convert position to steer angle. 32 counts per degree of steer pot position in my case
+    keyaCommand(keyaEncoderQuery);
+    delay(2);
+    KeyaBus_Receive();
+
+    // update keyaOffset about at 0.5° per second
+    if(keyaEncoderOffsetNew>keyaEncoderOffset){
+      if(keyaEncoderOffset+KEYA_OFFSET_INCREMENT > keyaEncoderOffsetNew)
+        keyaEncoderOffset=keyaEncoderOffsetNew;
+      else
+        keyaEncoderOffset+=KEYA_OFFSET_INCREMENT;
+    }
+    else if(keyaEncoderOffsetNew<keyaEncoderOffset){
+      if(keyaEncoderOffset-KEYA_OFFSET_INCREMENT < keyaEncoderOffsetNew)
+        keyaEncoderOffset=keyaEncoderOffsetNew;
+      else
+        keyaEncoderOffset-=KEYA_OFFSET_INCREMENT;
+    }
+
+    steeringPosition = (steeringPosition - 6805 + steerSettings.wasOffset); // 1/2 of full scale
+
+    steerAngleSens = (float)(steeringPosition) / 76.0f; // steerSettings.steerSensorCounts;
+      // Ackerman fix
+      if (steerAngleSens < 0)
+        steerAngleSens = (steerAngleSens * 91);
+
+
     //   ***** make sure that negative steer angle makes a left turn and positive value is a right turn *****
     if (steerConfig.InvertWAS)
     {
-      steeringPosition = (steeringPosition - 6805 - steerSettings.wasOffset); // 1/2 of full scale
-      steerAngleActual = (float)(steeringPosition) / -steerSettings.steerSensorCounts;
+      steerAngleActual = (float)(keyaEncoderValue + keyaEncoderOffset) /  steerSettings.steerSensorCounts;   //steerSettings.steerSensorCounts;
     }
     else
     {
-      steeringPosition = (steeringPosition - 6805 + steerSettings.wasOffset); // 1/2 of full scale
-      steerAngleActual = (float)(steeringPosition) / steerSettings.steerSensorCounts;
+      steerAngleActual = (float)(keyaEncoderValue) /  steerSettings.steerSensorCounts;
     }
 
-    // Ackerman fix
-    if (steerAngleActual < 0)
-      steerAngleActual = (steerAngleActual * steerSettings.AckermanFix);
+    
+
+    if(debugSerial){
+      Serial.print("SENS-");
+      Serial.print(millis());
+      Serial.print(",");
+      Serial.println(steerAngleActual);
+
+
+      keyaCommand(keyaEncoderQuery);
+      delay(2);
+      KeyaBus_Receive();
+
+      Serial.print("KEYAV-");
+      Serial.print(millis());
+      Serial.print(",");
+      Serial.println(keyaEncoderValue);
+
+      keyaCommand(keyaEncoderSpeedQuery);
+      delay(2);
+      KeyaBus_Receive();
+
+      Serial.print("KEYAS-");
+      Serial.print(millis());
+      Serial.print(",");
+      Serial.println(keyaEncoderSpeed);
+    }
+
+    dualWheelAngleV[indexV++]=dualWheelAngle;
+    indexV=indexV%400;
+    dualWheelAngleWT61V[indexV++]=steerAngleActual;
+    float sumDual =0;
+    float sumActual =0;
+    for(int k=0; k<400; k++){
+      sumDual+=dualWheelAngleV[k];
+      sumActual+=dualWheelAngleWT61V[k];
+    }
+    float meanDual=sumDual/400.0f;
+    float meanActual=sumActual/400.0f;
+
+
+    Serial.print(indexBuffer);
+    Serial.print("\t");
+
+    Serial.print("sens:");
+    Serial.print(steerAngleSens);
+    Serial.print(",");
+    // Serial.print("dualEst:");
+    // Serial.print(dualWheelAngle);
+    // Serial.print(",");
+    // Serial.print("meanDual:");
+    // Serial.print(meanDual);
+    // Serial.print(",");
+    // Serial.print("meanActual:");
+    // Serial.print(meanActual);
+    // Serial.print(",");
+    Serial.print("Keya:");
+    Serial.println(steerAngleActual);
+    // Serial.print(",");
+    // Serial.print("KeyaWT:");
+    // Serial.print((float)(keyaEncoderValue + keyaEncoderOffsetWT) / 86.0f);
 
     if (watchdogTimer < WATCHDOG_THRESHOLD)
     {
@@ -505,7 +605,6 @@ void autosteerLoop()
 
       pwmDrive = 0; // turn off steering motor
       motorDrive(); // out to motors the pwm value
-      pulseCount = 0;
       // Autosteer Led goes back to RED when autosteering is stopped
       digitalWrite(AUTOSTEER_STANDBY_LED, 1);
       digitalWrite(AUTOSTEER_ACTIVE_LED, 0);
@@ -514,46 +613,6 @@ void autosteerLoop()
 
   // This runs continuously, outside of the timed loop, keeps checking for new udpData, turn sense
   // delay(1);
-
-  // Speed pulse
-  if (gpsSpeedUpdateTimer < 1000)
-  {
-    if (speedPulseUpdateTimer > 200) // 100 (10hz) seems to cause tone lock ups occasionally
-    {
-      speedPulseUpdateTimer = 0;
-
-      // 130 pp meter, 3.6 kmh = 1 m/sec = 130hz or gpsSpeed * 130/3.6 or gpsSpeed * 36.1111
-      // gpsSpeed = ((float)(autoSteerUdpData[5] | autoSteerUdpData[6] << 8)) * 0.1;
-      float speedPulse = gpsSpeed * 36.1111;
-
-      // Serial.print(gpsSpeed); Serial.print(" -> "); Serial.println(speedPulse);
-
-      if (gpsSpeed > 0.11)
-      { // 0.10 wasn't high enough
-        tone(velocityPWM_Pin, uint16_t(speedPulse));
-      }
-      else
-      {
-        noTone(velocityPWM_Pin);
-      }
-    }
-  }
-  else // if gpsSpeedUpdateTimer hasn't update for 1000 ms, turn off speed pulse
-  {
-    noTone(velocityPWM_Pin);
-  }
-
-  if (encEnable)
-  {
-    thisEnc = digitalRead(REMOTE_PIN);
-    if (thisEnc != lastEnc)
-    {
-      lastEnc = thisEnc;
-      if (lastEnc)
-        EncoderFunc();
-    }
-  }
-
 } // end of main loop
 
 int currentRoll = 0;
@@ -587,7 +646,7 @@ void ReceiveUdp()
     {
       if (autoSteerUdpData[3] == 0xFE && Autosteer_running) // 254
       {
-        gpsSpeed = ((float)(autoSteerUdpData[5] | autoSteerUdpData[6] << 8)) * 0.1;
+        gpsSpeed = ((float)(autoSteerUdpData[5] | autoSteerUdpData[6] << 8)) * 0.1;  //is negative when in reverse? No!
         gpsSpeedUpdateTimer = 0;
 
         prevGuidanceStatus = guidanceStatus;
@@ -675,7 +734,7 @@ void ReceiveUdp()
           }
         }
 
-        // Serial.println(steerAngleActual);
+        //Serial.println(steerAngleActual);
         //--------------------------------------------------------------------------
       }
 
@@ -872,13 +931,3 @@ void SendUdp(uint8_t *data, uint8_t datalen, IPAddress dip, uint16_t dport)
   Eth_udpAutoSteer.endPacket();
 }
 #endif
-
-// ISR Steering Wheel Encoder
-void EncoderFunc()
-{
-  if (encEnable)
-  {
-    pulseCount++;
-    encEnable = false;
-  }
-}

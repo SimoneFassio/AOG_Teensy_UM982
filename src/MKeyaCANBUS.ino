@@ -31,6 +31,10 @@ uint8_t keyaTemperatureResponse[] = {0x60, 0x0F, 0x21, 0x01};
 uint8_t keyaVersionQuery[] = {0x40, 0x01, 0x11, 0x11};
 uint8_t keyaVersionResponse[] = {0x60, 0x01, 0x11, 0x11};
 
+uint8_t keyaEncoderResponse[] = {0x60, 0x04, 0x21, 0x01};
+
+uint8_t keyaEncoderSpeedResponse[] = {0x60, 0x03, 0x21, 0x01};
+
 uint64_t KeyaID = 0x06000001; // 0x01 is default ID
 
 const bool debugKeya = false;
@@ -38,7 +42,16 @@ bool lnNeeded = false;
 uint32_t hbTime;
 uint32_t keyaTime;
 elapsedMillis keyaCurrentUpdateTimer = 0;
+elapsedMillis keyaEncoderUpdateTimer = 0;
 bool keyaMotorStatus = false;
+int actualSpeed = 0;
+
+int32_t keyaEncoderValueOld = 0;
+int32_t keyaEncoderValueFreeze = 0;
+uint16_t keyaDirOffset = 80; //80
+int16_t keyaDir = 0;
+uint16_t keyaState = 0; // 0 -> 4
+
 
 void CAN_Setup()
 {
@@ -58,17 +71,19 @@ bool isPatternMatch(const CAN_message_t &message, const uint8_t *pattern, size_t
 
 void printIdAndReply(uint32_t id, uint8_t buf[8])
 {
-  Serial.print(id, HEX);
-  Serial.print(" <> ");
-  for (byte i = 0; i < 8; i++)
-  {
-    if (buf[i] < 16)
-      Serial.print("0");
-    Serial.print(buf[i], HEX);
-    if (i < 7)
-      Serial.print(":");
+  if(debugKeya){
+    Serial.print(id, HEX);
+    Serial.print(" <> ");
+    for (byte i = 0; i < 8; i++)
+    {
+      if (buf[i] < 16)
+        Serial.print("0");
+      Serial.print(buf[i], HEX);
+      if (i < 7)
+        Serial.print(":");
+    }
+    lnNeeded = true;
   }
-  lnNeeded = true;
 }
 
 // only issue one query at a time, wait for respone
@@ -87,8 +102,12 @@ void keyaCommand(uint8_t command[])
 
 void SteerKeya(int steerSpeed)
 {
-  if (keyaCurrentUpdateTimer > 99)
+  //Serial.println("SteerKeya");
+  if (keyaCurrentUpdateTimer > 100)
     keyaCommand(keyaCurrentQuery); // for motors with slow HB
+  else {
+    keyaCommand(keyaEncoderSpeedQuery); // ask for encoder speed
+  }
   if (steerSpeed == 0)
   {
     keyaCommand(keyaDisableCommand);
@@ -99,7 +118,7 @@ void SteerKeya(int steerSpeed)
 
   if (keyaDetected)
   {
-    int actualSpeed = map(steerSpeed, -255, 255, -995, 995);
+    actualSpeed = map(steerSpeed, -255, 255, -995, 995);
     if (debugKeya)
       Serial.println("told to steer, with " + String(steerSpeed) + " so....");
     if (debugKeya)
@@ -156,57 +175,59 @@ void KeyaBus_Receive()
       // 6-7 - Control_Close (error code)
       // TODO Yeah, if we ever see something here, fire off a disable, refuse to engage autosteer or..?
       uint32_t time = millis();
-      Serial.print(time);
-      Serial.print(" ");
-      Serial.print(time - hbTime);
-      Serial.print(" ");
-      hbTime = time;
-      printIdAndReply(KeyaBusReceiveData.id, KeyaBusReceiveData.buf);
-      Serial.print(" HB ");
-
-      // calc speed
-      Serial.print(KeyaBusReceiveData.buf[2]);
-      Serial.print(":");
-      Serial.print(KeyaBusReceiveData.buf[3]);
-      Serial.print("=");
-      if (KeyaBusReceiveData.buf[2] == 0xFF)
-      {
-        Serial.print("-");
-        Serial.print(255 - KeyaBusReceiveData.buf[3]);
-      }
-      else
-      {
-        Serial.print(KeyaBusReceiveData.buf[3]);
-      }
-      Serial.print(" ");
-
-      // calc current
-      Serial.print(KeyaBusReceiveData.buf[4]);
-      Serial.print(":");
-      Serial.print(KeyaBusReceiveData.buf[5]);
-      Serial.print("=");
-      if (KeyaBusReceiveData.buf[4] == 0xFF)
-      {
-        Serial.print("-");
-        Serial.print(255 - KeyaBusReceiveData.buf[5]);
-        // KeyaCurrentSensorReading = (255 - KeyaBusReceiveData.buf[5]) * 20;  // use other motor current query data
-      }
-      else
-      {
-        Serial.print(KeyaBusReceiveData.buf[5]);
-        // KeyaCurrentSensorReading = KeyaBusReceiveData.buf[5] * 20;
-      }
-      // keyaCurrentUpdateTimer = 0;
-      Serial.print(" ");
-
-      // print error status
-      Serial.print(KeyaBusReceiveData.buf[6]);
-      Serial.print(":");
-      Serial.print(KeyaBusReceiveData.buf[7]);
-      Serial.print(" "); // Serial.print(KeyaCurrentSensorReading);
       keyaMotorStatus = !bitRead(KeyaBusReceiveData.buf[7], 0);
-      Serial.print("\r\nmotor status ");
-      Serial.print(keyaMotorStatus);
+      if(debugKeya){
+        Serial.print(time);
+        Serial.print(" ");
+        Serial.print(time - hbTime);
+        Serial.print(" ");
+        hbTime = time;
+        printIdAndReply(KeyaBusReceiveData.id, KeyaBusReceiveData.buf);
+        Serial.print(" HB ");
+
+        // calc speed
+        Serial.print(KeyaBusReceiveData.buf[2]);
+        Serial.print(":");
+        Serial.print(KeyaBusReceiveData.buf[3]);
+        Serial.print("=");
+        if (KeyaBusReceiveData.buf[2] == 0xFF)
+        {
+          Serial.print("-");
+          Serial.print(255 - KeyaBusReceiveData.buf[3]);
+        }
+        else
+        {
+          Serial.print(KeyaBusReceiveData.buf[3]);
+        }
+        Serial.print(" ");
+
+        // calc current
+        Serial.print(KeyaBusReceiveData.buf[4]);
+        Serial.print(":");
+        Serial.print(KeyaBusReceiveData.buf[5]);
+        Serial.print("=");
+        if (KeyaBusReceiveData.buf[4] == 0xFF)
+        {
+          Serial.print("-");
+          Serial.print(255 - KeyaBusReceiveData.buf[5]);
+          // KeyaCurrentSensorReading = (255 - KeyaBusReceiveData.buf[5]) * 20;  // use other motor current query data
+        }
+        else
+        {
+          Serial.print(KeyaBusReceiveData.buf[5]);
+          // KeyaCurrentSensorReading = KeyaBusReceiveData.buf[5] * 20;
+        }
+        // keyaCurrentUpdateTimer = 0;
+        Serial.print(" ");
+
+        // print error status
+        Serial.print(KeyaBusReceiveData.buf[6]);
+        Serial.print(":");
+        Serial.print(KeyaBusReceiveData.buf[7]);
+        Serial.print(" "); // Serial.print(KeyaCurrentSensorReading);
+        Serial.print("\r\nmotor status ");
+        Serial.print(keyaMotorStatus);
+      }
 
       // check if there's any motor diag/error data and parse it
       if (KeyaBusReceiveData.buf[7] != 0)
@@ -216,9 +237,12 @@ void KeyaBus_Receive()
         if (bitRead(KeyaBusReceiveData.buf[7], 0))
         {
           if (steerSwitch == 0 && keyaMotorStatus == 1)
-          {
-            Serial.print("\r\nMotor disabled");
-            Serial.print(" - set AS off");
+          {            
+            keyaMotorStatus = !bitRead(KeyaBusReceiveData.buf[7], 0);  //necessario ??  #######################################
+            if(debugKeya){
+              Serial.print("\r\nMotor disabled");
+              Serial.print(" - set AS off");
+            }
             steerSwitch = 1; // turn off AS if motor's internal shutdown triggers
             currentState = 1;
             previous = 0;
@@ -323,18 +347,106 @@ void KeyaBus_Receive()
       else if (isPatternMatch(KeyaBusReceiveData, keyaCurrentResponse, sizeof(keyaCurrentResponse)))
       {
         uint32_t time = millis();
-        Serial.print(time);
-        Serial.print(" ");
-        Serial.print(time - keyaTime);
-        Serial.print(" ");
         keyaTime = time;
         printIdAndReply(KeyaBusReceiveData.id, KeyaBusReceiveData.buf);
-        Serial.print(" current reply ");
-        Serial.print(KeyaBusReceiveData.buf[4]);
-        KeyaCurrentSensorReading = KeyaBusReceiveData.buf[4] * 2.5; // so that AoG's display shows "amps"
+        // Serial.print(" current reply ");
+        // Serial.print(KeyaBusReceiveData.buf[4]);
+        KeyaCurrentSensorReading = KeyaBusReceiveData.buf[4];
         keyaCurrentUpdateTimer -= 100;
-        Serial.print(" ave ");
-        Serial.print(sensorReading / 2.5); // to print ave in "amps"
+      }
+
+      // Encoder query response
+      else if (isPatternMatch(KeyaBusReceiveData, keyaEncoderResponse, sizeof(keyaEncoderResponse)))
+      {
+        printIdAndReply(KeyaBusReceiveData.id, KeyaBusReceiveData.buf);
+        keyaEncoderValue = KeyaBusReceiveData.buf[7] << 24 | 
+            KeyaBusReceiveData.buf[6] << 16 | 
+            KeyaBusReceiveData.buf[5] << 8 | 
+            KeyaBusReceiveData.buf[4];
+        if(debugKeya){
+          Serial.print(" encoder reply ");
+          Serial.print(keyaEncoderValue);
+        }
+
+        //divide by -6 so right is positive
+        keyaEncoderValue=keyaEncoderValue/-6;
+
+        if(keyaEncoderValueOld>keyaEncoderValue)
+          keyaDir=-1;
+        if(keyaEncoderValueOld<keyaEncoderValue)
+          keyaDir=1;
+        keyaEncoderValueOld = keyaEncoderValue;
+
+
+        switch (keyaState)
+        {
+        case 0:       //start point
+          if(keyaDir==1)
+            keyaState=1;
+          else
+            keyaState=3;
+          break;
+
+        case 1:     //giro a dx
+          if(keyaDir==-1)
+            keyaState=2;
+          else
+            keyaEncoderValueFreeze=keyaEncoderValue;
+          break;
+        
+        case 2:     //cambio verso sx
+          if(keyaEncoderValueFreeze-keyaEncoderValue>keyaDirOffset)
+            keyaState=3;
+          else if(keyaEncoderValue>keyaEncoderValueFreeze)
+            keyaState=1;
+          keyaEncoderValue=keyaEncoderValueFreeze;
+          break;
+        
+        case 3:     //giro a sx
+          keyaEncoderValue += keyaDirOffset;
+          if(keyaDir==1)
+            keyaState=4;
+          else
+            keyaEncoderValueFreeze=keyaEncoderValue;
+          break;
+        
+        case 4:     //cambio a dx
+          keyaEncoderValue += keyaDirOffset;
+          if(keyaEncoderValue-keyaEncoderValueFreeze>keyaDirOffset)
+            keyaState=1;
+          else if(keyaEncoderValue<keyaEncoderValueFreeze)
+            keyaState=3;
+
+          keyaEncoderValue=keyaEncoderValueFreeze;
+          break;
+        
+        default:
+          keyaState=0;
+          break;
+        }
+      }
+
+      // Encoder speed query response
+      else if (isPatternMatch(KeyaBusReceiveData, keyaEncoderSpeedResponse, sizeof(keyaEncoderSpeedResponse)))
+      {
+        printIdAndReply(KeyaBusReceiveData.id, KeyaBusReceiveData.buf);
+        keyaEncoderSpeed = KeyaBusReceiveData.buf[5] << 8 | KeyaBusReceiveData.buf[4];
+        if(keyaEncoderSpeed>65000)
+          keyaEncoderSpeed=keyaEncoderSpeed-65536;
+        if(debugKeya){
+          Serial.print(" encoder speed reply ");
+          Serial.print(keyaEncoderSpeed);
+        }
+
+        if(keyaEncoderSpeed!=0){
+          //Serial.print("rapport:");
+          KeyaCurrentRapport = KeyaCurrentSensorReading/abs(keyaEncoderSpeed)*200;
+          KeyaCurrentRapportSmooth = KeyaCurrentRapportSmooth*0.5 + KeyaCurrentRapport*0.5;
+          //Serial.print(KeyaCurrentRapport);
+        }
+
+        //Serial.print(", rapportSmooth:");
+        //Serial.print(KeyaCurrentRapportSmooth);
       }
 
       // Fault query response

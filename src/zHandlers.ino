@@ -1,6 +1,27 @@
 // Conversion to Hexidecimal
 const char *asciiHex = "0123456789ABCDEF";
 
+#define MAXBUFFERLEN 500      //consider 20Hz    500->25 sec
+#define MINBUFFERLEN 300      //consider 20Hz    300->15 sec
+#define MAXANGLECALC 15
+#define MINSPEEDCAL 0.5       //  m/s
+
+float dualWheelAngleBuffer[MAXBUFFERLEN];
+float steerAngleActualBuffer[MAXBUFFERLEN];
+float WTWheelAngleBuffer[MAXBUFFERLEN];
+int bufferLen = MINBUFFERLEN;
+
+#include <SimpleKalmanFilter.h>
+
+/*
+ SimpleKalmanFilter(e_mea, e_est, q);
+ e_mea: Measurement Uncertainty 
+ e_est: Estimation Uncertainty 
+ q: Process Noise
+ */
+SimpleKalmanFilter rollKF(0.1, 0.1, 0.1);
+
+
 // the new PANDA sentence buffer
 char nmea[100];
 
@@ -25,11 +46,7 @@ char umHeading[8];
 char umRoll[8];
 int solQuality;
 
-// IMU
-char imuHeading[6];
-char imuRoll[6];
-char imuPitch[6];
-char imuYawRate[6];
+
 
 // If odd characters showed up.
 void errorHandler()
@@ -75,7 +92,6 @@ void GGA_Handler() // Rec'd GGA
   }
 
   blink = !blink;
-  GGA_Available = true;
 
   dualReadyGGA = true;
 
@@ -85,256 +101,106 @@ void GGA_Handler() // Rec'd GGA
 void VTG_Handler()
 {
   // vtg heading
-  parser.getArg(0, vtgHeading);
+  parser.getArg(0, vtgHeading);  //i can use for reverse detection (180° from dualHeading)
+  headingVTG = atof(vtgHeading);
+
+  if(abs((int)(headingVTG-headingDual)%360)>120 && speed>MINSPEEDCAL)  //reverse
+    workingDir=-1;
+  else
+    workingDir=1;
+
 
   // vtg Speed knots
   parser.getArg(4, speedKnots);
+  speed = atof(speedKnots) * 1852 / 3600; // m/s
 }
 
 // UM982 Support
 void HPR_Handler()
 {
-  dualReadyRelPos = true;
   digitalWrite(GPSRED_LED, LOW); // Turn red GPS LED OFF (we are now in dual mode so green LED)
 
   // HPR Heading
   parser.getArg(1, umHeading);
-  heading = atof(umHeading);
+
+  headingDualOld = headingDual;
+  headingDual = atof(umHeading);
+
+  // Solution quality factor
+  parser.getArg(4, solQuality);
+
+  if (solQuality == 4){  //RTK
+    float rate = (headingDual - headingDualOld);
+    if(rate>300)
+      rate-=360;
+    if(rate<-300)
+      rate+=360;
+    
+    headingDualRate = rate / RAD_TO_DEG * 20;  //20Hz update rate
+
+    dualWheelAngle = atan(headingDualRate*wheelBase/speed) * RAD_TO_DEG * workingDir;
+    dualWheelAngleWT61 = atan(fGyro[2]/RAD_TO_DEG*wheelBase/speed*-1) * RAD_TO_DEG * workingDir;
+
+    if(abs(dualWheelAngle-steerAngleActual)<10 && abs(steerAngleActual)<MAXANGLECALC && speed>MINSPEEDCAL){ //se non c'è troppo differenza tra stima e reale (escludo manovre e retromarce) e non sto sterzando troppo e se andiamo almeno a 0.5*3.6=1.8 Km/h
+      dualWheelAngleBuffer[indexBuffer] = dualWheelAngle; 
+      steerAngleActualBuffer[indexBuffer] = steerAngleActual;
+      WTWheelAngleBuffer[indexBuffer] = dualWheelAngleWT61;
+      indexBuffer++;
+    }
+    else{                                   //altrimenti scarto precedenti misurazioni
+      indexBuffer = 0;
+      if(abs(steerAngleActual)>MAXANGLECALC)  //shorter time only if i have turned back
+        bufferLen = MINBUFFERLEN;
+    }
+
+    if(indexBuffer==bufferLen){   //buffer full -> calculate offset
+      float sumDual=0;
+      float sumActual=0;
+      float sumWT=0;
+      for(int i=0; i<bufferLen; i++){
+        sumDual += dualWheelAngleBuffer[i];
+        sumActual += steerAngleActualBuffer[i];
+        sumWT += WTWheelAngleBuffer[i];
+      }
+      float meanDual = sumDual/(float)bufferLen;
+      float meanActual = sumActual/(float)bufferLen;
+      float meanWT = sumWT/(float)bufferLen;
+
+      keyaEncoderOffsetNew = keyaEncoderOffset + ((meanDual-meanActual) * steerSettings.steerSensorCounts); //steerSettings.steerSensorCounts;
+      keyaEncoderOffsetWT += ((meanWT-meanActual) * steerSettings.steerSensorCounts); //steerSettings.steerSensorCounts;
+      indexBuffer = 0;
+      bufferLen = MAXBUFFERLEN;
+    }
+  }
+
+
+
 
   // HPR Substitute pitch for roll
   if (parser.getArg(2, umRoll))
   {
-    rollDual = atof(umRoll);
+    rollDual = atof(umRoll)- 0.2;
     digitalWrite(GPSGREEN_LED, HIGH); // Turn green GPS LED ON
+    Serial.print("rollDual:");
+    Serial.print(rollDual);
+
+    rollDual = rollKF.updateEstimate(rollDual);
+
+    //plotter
+    Serial.print(",rollKF:");
+    Serial.print(rollDual);
+    Serial.print(",angleWT:");
+    Serial.println(rollWT, 3);
+    //Serial.print(",");
+    //Serial.print("accx:");
+    //Serial.println(accXWT);
   }
   else
   {
     digitalWrite(GPSGREEN_LED, blink); // Flash the green GPS LED
   }
-
-  // Solution quality factor
-  parser.getArg(4, solQuality);
-
-  if (solQuality == 4)
-  {
-    if (useBNO08x)
-    {
-      if (baseLineCheck)
-      {
-        imuDualDelta();          // Find the error between latest IMU reading and this dual message
-        dualReadyRelPos = false; // RelPos ready is false because we just saved the error for running from the IMU
-      }
-    }
-    else
-    {
-      imuHandler();           // No IMU so use dual data direct
-      dualReadyRelPos = true; // RelPos ready is true so PAOGI will send when the GGA is also ready
-    }
-  }
-}
-
-void readBNO()
-{
-  if (bno08x.dataAvailable() == true)
-  {
-    float dqx, dqy, dqz, dqw, dacr;
-    uint8_t dac;
-
-    // get quaternion
-    bno08x.getQuat(dqx, dqy, dqz, dqw, dacr, dac);
-
-    float norm = sqrt(dqw * dqw + dqx * dqx + dqy * dqy + dqz * dqz);
-    dqw = dqw / norm;
-    dqx = dqx / norm;
-    dqy = dqy / norm;
-    dqz = dqz / norm;
-
-    float ysqr = dqy * dqy;
-
-    // yaw (z-axis rotation)
-    float t3 = +2.0 * (dqw * dqz + dqx * dqy);
-    float t4 = +1.0 - 2.0 * (ysqr + dqz * dqz);
-    yaw = atan2(t3, t4);
-
-    // Convert yaw to degrees x10
-    correctionHeading = -yaw;
-    yaw = (int16_t)((yaw * -RAD_TO_DEG_X_10));
-    if (yaw < 0)
-      yaw += 3600;
-
-    // pitch (y-axis rotation)
-    float t2 = +2.0 * (dqw * dqy - dqz * dqx);
-    t2 = t2 > 1.0 ? 1.0 : t2;
-    t2 = t2 < -1.0 ? -1.0 : t2;
-
-    // roll (x-axis rotation)
-    float t0 = +2.0 * (dqw * dqx + dqy * dqz);
-    float t1 = +1.0 - 2.0 * (dqx * dqx + ysqr);
-
-    if (steerConfig.IsUseY_Axis)
-    {
-      roll = asin(t2) * RAD_TO_DEG_X_10;
-      pitch = atan2(t0, t1) * RAD_TO_DEG_X_10;
-    }
-    else
-    {
-      pitch = asin(t2) * RAD_TO_DEG_X_10;
-      roll = atan2(t0, t1) * RAD_TO_DEG_X_10;
-    }
-
-    if (invertRoll)
-    {
-      roll *= -1;
-    }
-  }
-}
-
-void imuHandler()
-{
-  int16_t temp = 0;
-
-  if (useBNO08x)
-  {
-    // BNO is reading in its own timer
-    //  Fill rest of Panda Sentence - Heading
-    temp = yaw;
-    itoa(temp, imuHeading, 10);
-
-    // the pitch x10
-    temp = (int16_t)pitch;
-    itoa(temp, imuPitch, 10);
-
-    // the roll x10
-    temp = (int16_t)roll;
-    itoa(temp, imuRoll, 10);
-
-    // YawRate - 0 for now
-    itoa(0, imuYawRate, 10);
-  }
-
-  // No else, because we want to use dual heading and IMU roll when both connected
-  // We have a IMU so apply the dual/IMU roll/heading error to the IMU data.
-  if (useBNO08x && baseLineCheck)
-  {
-    float dualTemp; // To convert IMU data (x10) to a float for the PAOGI so we have the decamal point
-
-    // the IMU heading raw
-    // dualTemp = yaw * 0.1;
-    // dtostrf(dualTemp, 3, 1, imuHeading);
-
-    // the IMU heading fused to the dual heading
-    fuseIMU();
-    dtostrf(imuCorrected, 3, 1, imuHeading);
-
-    // the pitch
-    dualTemp = (int16_t)pitch * 0.1;
-    dtostrf(dualTemp, 3, 1, imuPitch);
-
-    // the roll
-    dualTemp = (int16_t)roll * 0.1;
-    // If dual heading correction is 90deg (antennas left/right) correct the IMU roll
-    if (headingcorr == 900)
-    {
-      dualTemp += rollDeltaSmooth;
-    }
-    dtostrf(dualTemp, 3, 1, imuRoll);
-  }
-  else // Not using IMU so put dual Heading & Roll in direct.
-  {
-    // the roll
-    if (makeOGI)
-    {
-      dtostrf(rollDual, 4, 2, imuRoll);
-    }
-    else
-    {
-      itoa(rollDual * 10, imuRoll, 10);
-    }
-
-    // the Dual heading raw
-    if (makeOGI)
-    {
-      dtostrf(heading, 4, 2, imuHeading);
-    }
-    else
-    {
-      itoa(heading * 10, imuHeading, 10);
-    }
-
-    // the pitch
-    dtostrf(pitchDual, 4, 4, imuPitch);
-  }
-}
-
-void imuDualDelta()
-{
-  // correctionHeading is IMU heading in radians
-  gpsHeading = heading * DEG_TO_RAD; // gpsHeading is Dual heading in radians
-
-  // Difference between the IMU heading and the GPS heading
-  gyroDelta = (correctionHeading + imuGPS_Offset) - gpsHeading;
-  if (gyroDelta < 0)
-    gyroDelta += twoPI;
-
-  // calculate delta based on circular data problem 0 to 360 to 0, clamp to +- 2 Pi
-  if (gyroDelta >= -PIBy2 && gyroDelta <= PIBy2)
-    gyroDelta *= -1.0;
-  else
-  {
-    if (gyroDelta > PIBy2)
-    {
-      gyroDelta = twoPI - gyroDelta;
-    }
-    else
-    {
-      gyroDelta = (twoPI + gyroDelta) * -1.0;
-    }
-  }
-  if (gyroDelta > twoPI)
-    gyroDelta -= twoPI;
-  if (gyroDelta < -twoPI)
-    gyroDelta += twoPI;
-
-  // if the gyro and last corrected fix is < 10 degrees, super low pass for gps
-  if (abs(gyroDelta) < 0.18)
-  {
-    // a bit of delta and add to correction to current gyro
-    imuGPS_Offset += (gyroDelta * (0.1));
-    if (imuGPS_Offset > twoPI)
-      imuGPS_Offset -= twoPI;
-    if (imuGPS_Offset < -twoPI)
-      imuGPS_Offset += twoPI;
-  }
-  else
-  {
-    // a bit of delta and add to correction to current gyro
-    imuGPS_Offset += (gyroDelta * (0.2));
-    if (imuGPS_Offset > twoPI)
-      imuGPS_Offset -= twoPI;
-    if (imuGPS_Offset < -twoPI)
-      imuGPS_Offset += twoPI;
-  }
-
-  // So here how we have the difference between the IMU heading and the Dual GPS heading
-  // This "imuGPS_Offset" will be used in imuHandler() when the GGA arrives
-
-  // Calculate the diffrence between dual and imu roll
-  float imuRoll;
-  imuRoll = (int16_t)roll * 0.1;
-  rollDelta = rollDual - imuRoll;
-  rollDeltaSmooth = (rollDeltaSmooth * 0.7) + (rollDelta * 0.3);
-}
-
-void fuseIMU()
-{
-  // determine the Corrected heading based on gyro and GPS
-  imuCorrected = correctionHeading + imuGPS_Offset;
-  if (imuCorrected > twoPI)
-    imuCorrected -= twoPI;
-  if (imuCorrected < 0)
-    imuCorrected += twoPI;
-
-  imuCorrected = imuCorrected * RAD_TO_DEG;
+  
+  dualReadyHPR = true; // RelPos ready is true so PAOGI will send when the GGA is also ready
 }
 
 void BuildNmea(void)
@@ -383,19 +249,19 @@ void BuildNmea(void)
   strcat(nmea, ",");
 
   // 12
-  strcat(nmea, imuHeading);
+  strcat(nmea, headingPanda);
   strcat(nmea, ",");
 
   // 13
-  strcat(nmea, imuRoll);
+  strcat(nmea, rollPanda);
   strcat(nmea, ",");
 
   // 14
-  strcat(nmea, imuPitch);
+  strcat(nmea, pitchPanda);
   strcat(nmea, ",");
 
   // 15
-  strcat(nmea, imuYawRate);
+  strcat(nmea, yawRatePanda);
 
   strcat(nmea, "*");
 
@@ -414,6 +280,12 @@ void BuildNmea(void)
     Eth_udpPAOGI.beginPacket(Eth_ipDestination, portDestination);
     Eth_udpPAOGI.write(nmea, len);
     Eth_udpPAOGI.endPacket();
+  }
+  if(debugSerial){
+    Serial.print("GPS-");
+    Serial.print(millis());
+    Serial.print(",");
+    Serial.println(nmea);
   }
 }
 
