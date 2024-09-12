@@ -437,6 +437,7 @@ int32_t WitSetUartBaud(int32_t uiBaudIndex)
 	else if(s_uiProtoclo == WIT_PROTOCOL_NORMAL) p_WitDelaymsFunc(1);
 	else ;
 	if(WitWriteReg(BAUD, uiBaudIndex) != WIT_HAL_OK)	return  WIT_HAL_ERROR;
+    if(WitWriteReg(SAVE, SAVE_PARAM) != WIT_HAL_OK)	return  WIT_HAL_ERROR; ////////
 	return WIT_HAL_OK;
 }
 /*change Can Band*/
@@ -498,5 +499,18 @@ int32_t WitSetContent(int32_t uiRsw)
 	return WIT_HAL_OK;
 }
 
+// set Angle reference to review if necessary
+// int32_t WitCaliRefAngle(void)
+// {
+// 	if(s_uiProtoclo == WIT_PROTOCOL_JY61) return WIT_HAL_INVAL;
+// 	if(WitWriteReg(KEY, KEY_UNLOCK) != WIT_HAL_OK)	    return  WIT_HAL_ERROR;
+// 	if(p_WitDelaymsFunc != NULL)
+// 	{
+// 	   p_WitDelaymsFunc(20);
+// 	}
+// 	else return WIT_HAL_EMPTY;
+// 	if(WitWriteReg(CALSW, CALREFANGLE) != WIT_HAL_OK)	return  WIT_HAL_ERROR;
+// 	return WIT_HAL_OK;
+// }
 
 

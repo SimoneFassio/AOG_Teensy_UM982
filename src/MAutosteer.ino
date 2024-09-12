@@ -50,7 +50,6 @@ int indexBuffer=0;
 //--------------------------- Switch Input Pins ------------------------
 #define STEERSW_PIN 32
 #define WORKSW_PIN 34
-#define REMOTE_PIN 37 //reboot teensy  //debug
 
 // Define sensor pin for current or pressure sensor
 #define CURRENT_SENSOR_PIN A17
@@ -142,8 +141,7 @@ float dualWheelAngleAverage=0;
 int indexV=0;
 int indexWT61V=0;
 
-int32_t keyaEncoderOffset = 0;
-int32_t keyaEncoderOffsetNew = 0;
+
 int32_t keyaEncoderOffsetWT = 0;
 int32_t keyaEncoderOffsetTiny = 0;
 int32_t keyaEncoderOffsetNewWT = 0;
@@ -231,7 +229,7 @@ void autosteerSetup()
   // keep pulled high and drag low to activate, noise free safe
   pinMode(WORKSW_PIN, INPUT_PULLUP);
   pinMode(STEERSW_PIN, INPUT_PULLUP);
-  pinMode(REMOTE_PIN, INPUT_PULLUP);
+  pinMode(DEBUG_PIN, INPUT_PULLUP);
   pinMode(DIR1_RL_ENABLE, OUTPUT);
 
   // Disable digital inputs for analog input pins
@@ -239,8 +237,8 @@ void autosteerSetup()
   pinMode(PRESSURE_SENSOR_PIN, INPUT_DISABLE);
 
   // set up communication
-  Wire1.end();
-  Wire1.begin();
+  Wire.end();
+  Wire.begin();
 
   // Check ADC
   if (adc.testConnection())
@@ -250,7 +248,7 @@ void autosteerSetup()
   else
   {
     Serial.println("ADC Connecton FAILED!");
-    Autosteer_running = false;
+    //Autosteer_running = false;
   }
 
   // 50Khz I2C
@@ -277,20 +275,8 @@ void autosteerSetup()
   steerSettingsInit();
   steerConfigInit();
 
-  if (Autosteer_running)
-  {
-    Serial.println("Autosteer running, waiting for AgOpenGPS");
-    // Autosteer Led goes Red if ADS1115 is found
-    digitalWrite(AUTOSTEER_ACTIVE_LED, 0);
-    digitalWrite(AUTOSTEER_STANDBY_LED, 1);
-  }
-  else
-  {
-    Autosteer_running = false; // Turn off auto steer if no ethernet (Maybe running T4.0)
-    //    if(!Ethernet_running)Serial.println("Ethernet not available");
-    Serial.println("Autosteer disabled, GPS only mode");
-    return;
-  }
+  Serial.println("Autosteer setup, waiting for AgOpenGPS");
+
 
   adc.setSampleRate(ADS1115_REG_CONFIG_DR_128SPS); // 128 samples per second
   adc.setGain(ADS1115_REG_CONFIG_PGA_6_144V);
@@ -420,7 +406,7 @@ void autosteerLoop()
       }
     }
 
-    remoteSwitch = digitalRead(REMOTE_PIN);
+    remoteSwitch = 1;
     if (!remoteSwitch)
     {
       SCB_AIRCR = 0x05FA0004; // Teensy Reboot
@@ -429,6 +415,13 @@ void autosteerLoop()
     switchByte |= (remoteSwitch << 2); // put remote in bit 2
     switchByte |= (steerSwitch << 1);  // put steerswitch status in bit 1 position
     switchByte |= workSwitch;
+
+    if(debugState == SWITCH){
+      Serial.print("SteerSwitch: ");
+      Serial.print(steerSwitch); 
+      Serial.print(" workSwitch: ");
+      Serial.println(workSwitch);
+    }
 
     /*
       #if Relay_Type == 1
@@ -483,45 +476,17 @@ void autosteerLoop()
     steerAngleSens = (float)(steeringPosition) / 76.0f; // steerSettings.steerSensorCounts;
       // Ackerman fix
       if (steerAngleSens < 0)
-        steerAngleSens = (steerAngleSens * 91);
+        steerAngleSens = (steerAngleSens * 0.91);
 
 
     //   ***** make sure that negative steer angle makes a left turn and positive value is a right turn *****
     if (steerConfig.InvertWAS)
     {
-      steerAngleActual = (float)(keyaEncoderValue + keyaEncoderOffset) /  steerSettings.steerSensorCounts;   //steerSettings.steerSensorCounts;
+      steerAngleActual = (float)(keyaEncoderValue) /  steerSettings.steerSensorCounts;   //steerSettings.steerSensorCounts;
     }
     else
     {
-      steerAngleActual = (float)(keyaEncoderValue) /  steerSettings.steerSensorCounts;
-    }
-
-    
-
-    if(debugSerial){
-      Serial.print("SENS-");
-      Serial.print(millis());
-      Serial.print(",");
-      Serial.println(steerAngleActual);
-
-
-      keyaCommand(keyaEncoderQuery);
-      delay(2);
-      KeyaBus_Receive();
-
-      Serial.print("KEYAV-");
-      Serial.print(millis());
-      Serial.print(",");
-      Serial.println(keyaEncoderValue);
-
-      keyaCommand(keyaEncoderSpeedQuery);
-      delay(2);
-      KeyaBus_Receive();
-
-      Serial.print("KEYAS-");
-      Serial.print(millis());
-      Serial.print(",");
-      Serial.println(keyaEncoderSpeed);
+      steerAngleActual = (float)(keyaEncoderValue + keyaEncoderOffset) /  steerSettings.steerSensorCounts;
     }
 
     dualWheelAngleV[indexV++]=dualWheelAngle;
@@ -536,10 +501,9 @@ void autosteerLoop()
     float meanDual=sumDual/400.0f;
     float meanActual=sumActual/400.0f;
 
-
-    Serial.print(indexBuffer);
-    Serial.print("\t");
-
+    if(debugState == WAS || debugState == EXPERIMENT){
+    //Serial.print(indexBuffer);
+    //Serial.print("\t");
     Serial.print("sens:");
     Serial.print(steerAngleSens);
     Serial.print(",");
@@ -557,6 +521,7 @@ void autosteerLoop()
     // Serial.print(",");
     // Serial.print("KeyaWT:");
     // Serial.print((float)(keyaEncoderValue + keyaEncoderOffsetWT) / 86.0f);
+    }
 
     if (watchdogTimer < WATCHDOG_THRESHOLD)
     {
@@ -583,7 +548,6 @@ void autosteerLoop()
       // Autosteer Led goes GREEN if autosteering
 
       digitalWrite(AUTOSTEER_ACTIVE_LED, 1);
-      digitalWrite(AUTOSTEER_STANDBY_LED, 0);
     }
     else
     {
@@ -606,8 +570,7 @@ void autosteerLoop()
       pwmDrive = 0; // turn off steering motor
       motorDrive(); // out to motors the pwm value
       // Autosteer Led goes back to RED when autosteering is stopped
-      digitalWrite(AUTOSTEER_STANDBY_LED, 1);
-      digitalWrite(AUTOSTEER_ACTIVE_LED, 0);
+      digitalWrite(AUTOSTEER_ACTIVE_LED, systick_millis_count % 512 > 256);
     }
   } // end of timed loop
 
@@ -642,6 +605,13 @@ void ReceiveUdp()
   {
     Eth_udpAutoSteer.read(autoSteerUdpData, UDP_TX_PACKET_MAX_SIZE);
 
+    if(debugState == UDP){
+      Serial.print("ReceivedPacket: ");
+      for(int l=0; l<len; l++)
+        Serial.print(autoSteerUdpData[l]);
+      Serial.println();
+    }
+
     if (autoSteerUdpData[0] == 0x80 && autoSteerUdpData[1] == 0x81 && autoSteerUdpData[2] == 0x7F) // Data
     {
       if (autoSteerUdpData[3] == 0xFE && Autosteer_running) // 254
@@ -656,12 +626,6 @@ void ReceiveUdp()
 
         // Bit 8,9    set point steer angle * 100 is sent
         steerAngleSetPoint = ((float)(autoSteerUdpData[8] | ((int8_t)autoSteerUdpData[9]) << 8)) * 0.01; // high low bytes
-
-        // Serial.print("steerAngleSetPoint: ");
-        // Serial.println(steerAngleSetPoint);
-
-        // Serial.println(gpsSpeed);
-        // Serial.println(millis());
 
         if ((bitRead(guidanceStatus, 0) == 0) || (gpsSpeed < 0.1) || (steerSwitch == 1))
         {
@@ -734,7 +698,6 @@ void ReceiveUdp()
           }
         }
 
-        //Serial.println(steerAngleActual);
         //--------------------------------------------------------------------------
       }
 
@@ -843,19 +806,17 @@ void ReceiveUdp()
       }                                    // end FB
       else if (autoSteerUdpData[3] == 200) // Hello from AgIO
       {
-        if (Autosteer_running)
-        {
-          int16_t sa = (int16_t)(steerAngleActual * 100);
+        Autosteer_running=true;
+        int16_t sa = (int16_t)(steerAngleActual * 100);
 
-          helloFromAutoSteer[5] = (uint8_t)sa;
-          helloFromAutoSteer[6] = sa >> 8;
+        helloFromAutoSteer[5] = (uint8_t)sa;
+        helloFromAutoSteer[6] = sa >> 8;
 
-          helloFromAutoSteer[7] = (uint8_t)helloSteerPosition;
-          helloFromAutoSteer[8] = helloSteerPosition >> 8;
-          helloFromAutoSteer[9] = switchByte;
+        helloFromAutoSteer[7] = (uint8_t)helloSteerPosition;
+        helloFromAutoSteer[8] = helloSteerPosition >> 8;
+        helloFromAutoSteer[9] = switchByte;
 
-          SendUdp(helloFromAutoSteer, sizeof(helloFromAutoSteer), Eth_ipDestination, portDestination);
-        }
+        SendUdp(helloFromAutoSteer, sizeof(helloFromAutoSteer), Eth_ipDestination, portDestination);
         if (useBNO08x)
         {
           SendUdp(helloFromIMU, sizeof(helloFromIMU), Eth_ipDestination, portDestination);

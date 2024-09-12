@@ -37,7 +37,6 @@ uint8_t keyaEncoderSpeedResponse[] = {0x60, 0x03, 0x21, 0x01};
 
 uint64_t KeyaID = 0x06000001; // 0x01 is default ID
 
-const bool debugKeya = false;
 bool lnNeeded = false;
 uint32_t hbTime;
 uint32_t keyaTime;
@@ -71,7 +70,7 @@ bool isPatternMatch(const CAN_message_t &message, const uint8_t *pattern, size_t
 
 void printIdAndReply(uint32_t id, uint8_t buf[8])
 {
-  if(debugKeya){
+  if(debugState == KEYA){
     Serial.print(id, HEX);
     Serial.print(" <> ");
     for (byte i = 0; i < 8; i++)
@@ -111,7 +110,7 @@ void SteerKeya(int steerSpeed)
   if (steerSpeed == 0)
   {
     keyaCommand(keyaDisableCommand);
-    if (debugKeya)
+    if (debugState == KEYA)
       Serial.println("steerSpeed zero - disabling");
     return; // don't need to go any further, if we're disabling, we're disabling
   }
@@ -119,9 +118,9 @@ void SteerKeya(int steerSpeed)
   if (keyaDetected)
   {
     actualSpeed = map(steerSpeed, -255, 255, -995, 995);
-    if (debugKeya)
+    if (debugState == KEYA)
       Serial.println("told to steer, with " + String(steerSpeed) + " so....");
-    if (debugKeya)
+    if (debugState == KEYA)
       Serial.println("I converted that to speed " + String(actualSpeed));
 
     CAN_message_t KeyaBusSendData;
@@ -135,7 +134,7 @@ void SteerKeya(int steerSpeed)
       KeyaBusSendData.buf[5] = lowByte(actualSpeed);
       KeyaBusSendData.buf[6] = 0xff;
       KeyaBusSendData.buf[7] = 0xff;
-      if (debugKeya)
+      if (debugState == KEYA)
         Serial.println("pwmDrive < zero - clockwise - steerSpeed " + String(steerSpeed));
     }
     else
@@ -144,7 +143,7 @@ void SteerKeya(int steerSpeed)
       KeyaBusSendData.buf[5] = lowByte(actualSpeed);
       KeyaBusSendData.buf[6] = 0x00;
       KeyaBusSendData.buf[7] = 0x00;
-      if (debugKeya)
+      if (debugState == KEYA)
         Serial.println("pwmDrive > zero - anticlock-clockwise - steerSpeed " + String(steerSpeed));
     }
     Keya_Bus.write(KeyaBusSendData);
@@ -167,6 +166,8 @@ void KeyaBus_Receive()
         Serial.println("Keya heartbeat detected! Enabling Keya canbus & using reported motor current for disengage");
         keyaDetected = true;
         keyaCommand(keyaVersionQuery);
+        digitalWrite(CAN_ACTIVE_LED, 1);
+        KeyaBeatTime = systick_millis_count;
       }
       // 0-1 - Cumulative value of angle (360 def / circle)
       // 2-3 - Motor speed, signed int eg -500 or 500
@@ -176,7 +177,7 @@ void KeyaBus_Receive()
       // TODO Yeah, if we ever see something here, fire off a disable, refuse to engage autosteer or..?
       uint32_t time = millis();
       keyaMotorStatus = !bitRead(KeyaBusReceiveData.buf[7], 0);
-      if(debugKeya){
+      if(debugState == KEYA){
         Serial.print(time);
         Serial.print(" ");
         Serial.print(time - hbTime);
@@ -239,7 +240,7 @@ void KeyaBus_Receive()
           if (steerSwitch == 0 && keyaMotorStatus == 1)
           {            
             keyaMotorStatus = !bitRead(KeyaBusReceiveData.buf[7], 0);  //necessario ??  #######################################
-            if(debugKeya){
+            if(debugState == KEYA){
               Serial.print("\r\nMotor disabled");
               Serial.print(" - set AS off");
             }
@@ -363,7 +364,7 @@ void KeyaBus_Receive()
             KeyaBusReceiveData.buf[6] << 16 | 
             KeyaBusReceiveData.buf[5] << 8 | 
             KeyaBusReceiveData.buf[4];
-        if(debugKeya){
+        if(debugState == KEYA){
           Serial.print(" encoder reply ");
           Serial.print(keyaEncoderValue);
         }
@@ -433,7 +434,7 @@ void KeyaBus_Receive()
         keyaEncoderSpeed = KeyaBusReceiveData.buf[5] << 8 | KeyaBusReceiveData.buf[4];
         if(keyaEncoderSpeed>65000)
           keyaEncoderSpeed=keyaEncoderSpeed-65536;
-        if(debugKeya){
+        if(debugState == KEYA){
           Serial.print(" encoder speed reply ");
           Serial.print(keyaEncoderSpeed);
         }
@@ -501,4 +502,20 @@ void KeyaBus_Receive()
       lnNeeded = false;
     }
   }
+}
+
+void getKeyaInfo(){
+  keyaCommand(keyaVoltageQuery);
+  delay(10);
+  KeyaBus_Receive();
+  delay(10);
+
+  keyaCommand(keyaTemperatureQuery);
+  delay(10);
+  KeyaBus_Receive();
+  delay(10);
+
+  keyaCommand(keyaVersionQuery);
+  delay(10);
+  KeyaBus_Receive();
 }

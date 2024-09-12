@@ -16,7 +16,7 @@ const uint32_t c_uiBaud[8] = {0,4800, 9600, 19200, 38400, 57600, 115200, 230400}
 
 
 float rollWT = 0;
-float offsetRollWT = -2.2;
+float offsetRollWT = 0;
 float headingWT = 0;
 float accXWT = 0;
 
@@ -25,17 +25,19 @@ void setupWT61() {
 	WitSerialWriteRegister(SensorUartSend);
 	WitRegisterCallBack(SensorDataUpdata);
   	WitDelayMsRegister(Delayms);
-	Serial.print("WT61 begin");
+	Serial.println("WT61 begin");
 	BeginSensor();
 
-	if(WitSetContent(RSW_ACC|RSW_GYRO|RSW_ANGLE) != WIT_HAL_OK) Serial.print("\r\nSet RSW Error\r\n");
-	if(WitSetBandwidth(BANDWIDTH_5HZ) != WIT_HAL_OK) Serial.print("\r\nSet Bandwidth Error\r\n");
+	if(WitSetContent(RSW_ACC|RSW_GYRO|RSW_ANGLE) != WIT_HAL_OK) Serial.print("Set RSW Error");
+	if(WitSetBandwidth(BANDWIDTH_5HZ) != WIT_HAL_OK) Serial.println("Set Bandwidth Error");
 
-	if(WitSetUartBaud(WIT_BAUD_115200) != WIT_HAL_OK) Serial.print("\r\nSet Baud Error\r\n");
+	if(WitSetUartBaud(WIT_BAUD_115200) != WIT_HAL_OK) Serial.println("Set Baud Error");
 	else 	SerialWT61.begin(c_uiBaud[WIT_BAUD_115200]);
 
-	if(WitSetOutputRate(RRATE_50HZ) != WIT_HAL_OK) Serial.print("\r\nSet Baud Error\r\n");
-	else Serial.print("\r\nSet 50Hz return rate\r\n");
+	if(WitSetOutputRate(RRATE_50HZ) != WIT_HAL_OK) Serial.println("Set Baud Error");
+	else Serial.println("Set 50Hz return rate");
+
+	Serial.println();
 }
 float fAcc[3], fGyro[3], fAngle[3];
 void loopWT61() {
@@ -86,7 +88,10 @@ void loopWT61() {
 			// Serial.print(fAngle[2], 3);
 			// Serial.print("\r\n");
 			s_cDataUpdate &= ~ANGLE_UPDATE;
-			rollWT = fAngle[0] + offsetRollWT;
+			if (steerConfig.IsUseY_Axis)
+				rollWT = fAngle[1] + offsetRollWT;
+			else
+				rollWT = fAngle[0] + offsetRollWT;
 			headingWT = fAngle[2];
 		}
 		s_cDataUpdate = 0;
@@ -223,7 +228,7 @@ static void AutoScanSensor(void)
 	for(i = 0; i < sizeof(c_uiBaud)/sizeof(c_uiBaud[0]); i++)
 	{
 		SerialWT61.begin(c_uiBaud[i]);
-    SerialWT61.flush();
+    	SerialWT61.flush();
 		iRetry = 2;
 		s_cDataUpdate = 0;
 		do
@@ -265,8 +270,10 @@ static void BeginSensor(void)
 	if(s_cDataUpdate != 0)
 	{
 		Serial.print(baudRate);
-		Serial.print(" baud find sensor WT61\r\n\r\n");
+		Serial.println(" baud find sensor WT61");
 	}
-	else
-		Serial.print("could not find WT61");
+	else{
+		Serial.println("could not find WT61, try autoScan");
+		AutoScanSensor();
+	}
 }

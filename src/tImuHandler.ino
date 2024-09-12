@@ -140,36 +140,15 @@ void readBNO()
 
 
 
-    if(debugSerial){
-      Serial.print("IMU-");
-      Serial.print(millis());
-      Serial.print(",");
-      Serial.print(imuRoll);
-      Serial.print(",");
-      Serial.print(imuPitch);
-      Serial.print(",");
-      Serial.print(imuYaw);
-      Serial.print(",");
+    //float x = bno08x.getAccelX();
+    //float y = bno08x.getAccelY();
+    //float z = bno08x.getAccelZ();
 
-
-
-      Serial.print(gyroX, 4);
-      Serial.print(",");
-      Serial.print(gyroY, 4);
-      Serial.print(",");
-      Serial.print(gyroZ, 4);
-      Serial.print(",");
-
-      float x = bno08x.getAccelX();
-      float y = bno08x.getAccelY();
-      float z = bno08x.getAccelZ();
-
-      Serial.print(x, 4);
-      Serial.print(",");
-      Serial.print(y, 4);
-      Serial.print(",");
-      Serial.println(z, 4);
-    }
+    // Serial.print(x, 4);
+    // Serial.print(",");
+    // Serial.print(y, 4);
+    // Serial.print(",");
+    // Serial.println(z, 4);
 
     // if(bno08x.calibrationComplete() == true)
     //       {

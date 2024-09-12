@@ -20,6 +20,7 @@ bool udpPassthrough = false;  // False = GPS neeeds to send GGA, VTG & HPR messa
 bool makeOGI = true;          // Set to true to make PAOGI messages. Else PANDA message will be made.
 const bool invertRoll = true; // Used for IMU with dual antenna
 bool baseLineCheck = false;   // Set to true to use IMU fusion with UM982
+float headingOffset = 90;
 // #define baseLineLimit 5       // Max CM differance in baseline for fusion
 
 // Roll correction can be entered in the AOG GUI. If not enter roll correction here.
@@ -45,9 +46,9 @@ struct ConfigIP
   uint8_t ipTwo = 168;
   uint8_t ipThree = 5;
 };
-bool debugSerial = false;
 
-float wheelBase=2.38;   //of the tractor (meters)
+float wheelBase = 2.38;   //of the tractor (meters)
+float distanceFromCenterRearAxis = 0.7; // meters
 /************************* End User Settings *********************/
 
 bool gotCR = false;
@@ -73,15 +74,15 @@ bool keyaDetected = false; //***************************************************
 #define REPORT_INTERVAL 20  // BNO report time, we want to keep reading it quick & offen. Its not timmed to anything just give constant data.
 uint32_t READ_BNO_TIME = 0; // Used stop BNO data pile up (This version is without resetting BNO everytime)
 
-// Status LED's
-#define GGAReceivedLED 13        // Teensy onboard LED   etehrnet??
-#define Power_on_LED 5           // Red
-#define Ethernet_Active_LED 6    // Green
-#define GPSRED_LED 9             // Red (Flashing = NO IMU or Dual, ON = GPS fix with IMU)
-#define GPSGREEN_LED 10          // Green (Flashing = Dual bad, ON = Dual good)
-#define AUTOSTEER_STANDBY_LED 11 // Red
-#define AUTOSTEER_ACTIVE_LED 12  // Green
-uint32_t gpsReadyTime = 0;       // Used for GGA timeout      PINs 9 Can ready -10 AOG steer -12 IMU-GGA OK for leds
+// Status LED's   
+#define GGAReceivedLED 12        // blink if GGA received, ON if RTK, OFF no GGA,     blue
+#define DEBUG_LED 13             // ON if debugState > SETUP                          red on board
+#define AUTOSTEER_ACTIVE_LED 10  // blink if hello from AOG, ON if steering,          red
+#define CAN_ACTIVE_LED 9         // ON if keya heartbeat,                             yellow
+#define DEBUG_PIN 37             //button
+
+uint32_t gpsReadyTime = 0;       // Used for GGA timeout      
+uint32_t KeyaBeatTime = 0;       // Used for Keya timeout
 
 void errorHandler();
 void GGA_Handler();
@@ -98,6 +99,8 @@ void checkUM982();
 void configureUM982();
 void imuSetup();
 void passthroughSerial();
+void LedSetup();
+void getKeyaInfo();
 
 ConfigIP networkAddress; // 3 bytes
 
@@ -161,18 +164,38 @@ NMEAParser<4> parser;
 
 bool blink = false;
 
-bool Autosteer_running = true; // Auto set off in autosteer setup
+bool Autosteer_running = false; // Auto set off in autosteer setup
 bool Ethernet_running = false; // Auto set on in ethernet setup
 
 float WT61[3];
+
+int32_t keyaEncoderOffset = 0;
+int32_t keyaEncoderOffsetNew = 0;
+
+enum debugList {
+  SETUP,
+  EXPERIMENT,
+  ROLL,
+  WAS,
+  GPS,
+  KEYA,
+  SWITCH,
+  UDP,
+  STATE_INFO
+};
+
+enum debugList debugState = SETUP;
+
+int8_t debugButton = 1;
+uint32_t debugTime = 0;
 
 
 // Setup procedure ---------------------------------------------------------------------------------------------------------------
 void setup()
 {
-  delay(3000); // Small delay so serial can monitor start up
+  delay(500); // Small delay so serial can monitor start up
 
-
+  LedSetup();
 
   Serial.println("Start setup");
   Serial.println();
@@ -183,15 +206,6 @@ void setup()
 
   if (gotUM982)
     configureUM982();
-
-
-  pinMode(GGAReceivedLED, OUTPUT);
-  pinMode(Power_on_LED, OUTPUT);
-  pinMode(Ethernet_Active_LED, OUTPUT);
-  pinMode(GPSRED_LED, OUTPUT);
-  pinMode(GPSGREEN_LED, OUTPUT);
-  pinMode(AUTOSTEER_STANDBY_LED, OUTPUT);
-  pinMode(AUTOSTEER_ACTIVE_LED, OUTPUT);
 
   // the dash means wildcard
 
@@ -220,14 +234,14 @@ void setup()
   Serial.println("\r\nStarting Ethernet...");
   EthernetStart();
 
-  Serial.println("\r\nStarting BNO085...");
+  //Serial.println("\r\nStarting BNO085...");
   imuSetup();
 
   useBNO08x=false; //*********************************
 
   delay(100);
-  Serial.print("useBNO08x = ");
-  Serial.println(useBNO08x);
+  //Serial.print("useBNO08x = ");
+  //Serial.println(useBNO08x);
 
   // Keya support
   CAN_Setup();
@@ -282,21 +296,24 @@ void loop()
     readBNO();
   }
 
+  //turn off LED if GGa timeout 3 sec
+  if (systick_millis_count - gpsReadyTime > 3000)
+    digitalWrite(GGAReceivedLED, LOW);
+
+  if(systick_millis_count - KeyaBeatTime > 5000){
+    digitalWrite(CAN_ACTIVE_LED, LOW);
+    keyaEncoderOffset = 0;
+    keyaEncoderOffsetNew = 0;
+  }
   if (Autosteer_running)
     autosteerLoop();
-  else
+  else{
     ReceiveUdp();
+    digitalWrite(AUTOSTEER_ACTIVE_LED, 0);
+  }
 
-  if (Ethernet.linkStatus() == LinkOFF)
-  {
-    digitalWrite(Power_on_LED, 1);
-    digitalWrite(Ethernet_Active_LED, 0);
-  }
-  if (Ethernet.linkStatus() == LinkON)
-  {
-    digitalWrite(Power_on_LED, 0);
-    digitalWrite(Ethernet_Active_LED, 1);
-  }
+  debugLoop();
+
 } // End Loop
 //**************************************************************************
 
@@ -318,7 +335,8 @@ void checkUM982(){
     {
       char incoming[100];
       SerialGPS->readBytesUntil('\n', incoming, 100);
-      // Serial.println(incoming);
+      //Serial.print("UM982 VERSION: ");
+      //Serial.println(incoming);
       if (strstr(incoming, "UM982") != NULL)
       {
         if (baudrate != 460800)
@@ -351,13 +369,12 @@ void configureUM982(){
   {
     char incoming[100];
     SerialGPS->readBytesUntil('\n', incoming, 100);
-    // Serial.println(incoming);
 
     // Check the "UM982 configured" flag.
     if (strstr(incoming, "CONFIG ANTENNADELTAHEN") != NULL)
     {
       Serial.println("Got the config line");
-      if (strstr(incoming, "ANTENNADELTAHEN 0.0099 0.0099 0.0095") != NULL)
+      if (strstr(incoming, "ANTENNADELTAHEN 0.0099 0.0099 0.0091") != NULL)
       {
         Serial.println("And it is already configured");
         Serial.println();
@@ -384,17 +401,33 @@ void configureUM982(){
 
         // Set heading to variablelength
         Serial.println("Setting heading to variablelength");
-        SerialGPS->write("CONFIG HEADING VARIABLELENGTH\r\n");
+        //SerialGPS->write("CONFIG HEADING VARIABLELENGTH\r\n");
+        SerialGPS->write("CONFIG HEADING FIXLENGTH\r\n");
+        delay(100);
+
+        SerialGPS->write("CONFIG HEADING REALIABILITY 3\r\n");
+        delay(100);
+
+        SerialGPS->write("CONFIG HEADING LENGHT 104 2\r\n");
+        delay(100);
+
+        SerialGPS->write("CONFIG PPP ENABLE E6-HAS\r\n");
+        delay(100);
+
+        SerialGPS->write("CONFIG PPP DATUM WGS84\r\n");
+        delay(100);
+
+        SerialGPS->write("CONFIG PPP CONVERGE 30 50\r\n");
         delay(100);
 
         // Set heading smoothing
         Serial.println("Setting heading smoothing");
-        SerialGPS->write("CONFIG SMOOTH HEADING 5\r\n");
+        SerialGPS->write("CONFIG SMOOTH HEADING 1\r\n");
         delay(100);
 
         // Set rtk height smoothing
         Serial.println("Setting rtkheight smoothing");
-        //SerialGPS->write("CONFIG SMOOTH RTKHEIGHT 10\r\n");
+        SerialGPS->write("CONFIG SMOOTH RTKHEIGHT 10\r\n");
         delay(100);
 
         // Set COM1 to 460800
@@ -429,7 +462,7 @@ void configureUM982(){
 
         // Setting the flag to signal UM982 is configured for AOG
         Serial.println("Setting UM982 configured flag");
-        SerialGPS->write("CONFIG ANTENNADELTAHEN 0.0099 0.0099 0.0095\r\n");
+        SerialGPS->write("CONFIG ANTENNADELTAHEN 0.0099 0.0099 0.0091\r\n");
         delay(100);
 
         // Saving the configuration in the UM982
@@ -505,6 +538,86 @@ void passthroughSerial(){
     }
 
     blink = !blink;
-    digitalWrite(GPSGREEN_LED, HIGH); // Turn green GPS LED ON
+  }
+}
+
+void LedSetup(){
+  pinMode(GGAReceivedLED, OUTPUT);
+  pinMode(DEBUG_LED, OUTPUT);
+  pinMode(AUTOSTEER_ACTIVE_LED, OUTPUT);
+  pinMode(CAN_ACTIVE_LED, OUTPUT);
+
+  digitalWrite(GGAReceivedLED, 1);
+  delay(300);
+  digitalWrite(GGAReceivedLED, 0);
+  delay(300);
+  digitalWrite(AUTOSTEER_ACTIVE_LED, 1);
+  delay(300);
+  digitalWrite(AUTOSTEER_ACTIVE_LED, 0);
+  delay(300);
+  digitalWrite(CAN_ACTIVE_LED, 1);
+  delay(300);
+  digitalWrite(CAN_ACTIVE_LED, 0);
+  delay(300);
+  digitalWrite(GGAReceivedLED, 1);
+  digitalWrite(AUTOSTEER_ACTIVE_LED, 1);
+  digitalWrite(CAN_ACTIVE_LED, 1);
+  delay(800);
+  digitalWrite(GGAReceivedLED, 0);
+  digitalWrite(AUTOSTEER_ACTIVE_LED, 0);
+  digitalWrite(CAN_ACTIVE_LED, 0);
+}
+
+void debugLoop(){
+  int8_t read=digitalRead(DEBUG_PIN);
+  //debug button handler
+  if(read == LOW && debugButton == 1){  //just pressed
+    if(debugState == STATE_INFO)
+      debugState = SETUP;
+    else
+      debugState=debugState+1;
+
+    switch(debugState){
+    case SETUP:
+      Serial.println("DEBUG: SETUP");
+      break;
+    case EXPERIMENT:
+      Serial.println("DEBUG: EXPERIMENT");
+      break;
+    case ROLL:
+      Serial.println("DEBUG: ROLL");
+      break;
+    case WAS:
+      Serial.println("DEBUG: WAS");
+      break;
+    case GPS:
+      Serial.println("DEBUG: GPS");
+      break;
+    case KEYA:
+      Serial.println("DEBUG: KEYA");
+      break;
+    case SWITCH:
+      Serial.println("DEBUG: SWITCH");
+      break;
+    case UDP:
+      Serial.println("DEBUG: UDP");
+      break;
+    case STATE_INFO:
+      Serial.println("DEBUG: STATE_INFO");
+      break;
+    }
+
+    if(debugState == SETUP)
+      digitalWrite(DEBUG_LED, LOW);
+    else
+      digitalWrite(DEBUG_LED, HIGH);
+
+    delay(200);
+  }
+  debugButton=read;
+
+  if(debugState == STATE_INFO && systick_millis_count - debugTime > 10000){
+    getKeyaInfo();
+    debugTime = systick_millis_count;
   }
 }

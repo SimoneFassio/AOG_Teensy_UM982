@@ -21,6 +21,15 @@ int bufferLen = MINBUFFERLEN;
  */
 SimpleKalmanFilter rollKF(0.1, 0.1, 0.1);
 
+#include <TinyGPSPlus.h>
+
+double latOld=0;
+double lonOld=0;
+double courseTo=0;
+float tinyWheelAngle=0;
+double courseOld=0;
+float speedCorrect=0;
+
 
 // the new PANDA sentence buffer
 char nmea[100];
@@ -51,7 +60,8 @@ int solQuality;
 // If odd characters showed up.
 void errorHandler()
 {
-  // nothing at the moment
+  if(debugState == GPS)
+    Serial.println("parser error");
 }
 
 void GGA_Handler() // Rec'd GGA
@@ -86,7 +96,7 @@ void GGA_Handler() // Rec'd GGA
   {
     digitalWrite(GGAReceivedLED, HIGH);
   }
-  else
+  else if (solQuality != 4)  //no RTK
   {
     digitalWrite(GGAReceivedLED, LOW);
   }
@@ -96,6 +106,9 @@ void GGA_Handler() // Rec'd GGA
   dualReadyGGA = true;
 
   gpsReadyTime = systick_millis_count; // Used for GGA timeout (LED's ETC)
+
+  if(debugState == GPS)
+    Serial.print("  GGA  ");
 }
 
 void VTG_Handler()
@@ -113,24 +126,53 @@ void VTG_Handler()
   // vtg Speed knots
   parser.getArg(4, speedKnots);
   speed = atof(speedKnots) * 1852 / 3600; // m/s
+
+  if(debugState == GPS)
+    Serial.print("  VTG  ");
 }
 
 // UM982 Support
 void HPR_Handler()
 {
-  digitalWrite(GPSRED_LED, LOW); // Turn red GPS LED OFF (we are now in dual mode so green LED)
 
   // HPR Heading
   parser.getArg(1, umHeading);
 
   headingDualOld = headingDual;
-  headingDual = atof(umHeading);
+  headingDual = atof(umHeading) + headingOffset;
 
   // Solution quality factor
   parser.getArg(4, solQuality);
 
-  if (solQuality == 4){  //RTK
-    float rate = (headingDual - headingDualOld);
+  //if (solQuality == 4){  //RTK
+  if (4 == 4){  //RTK
+    double rate;
+    
+    //tinyGPS
+    char* ptr; // just a dummy value needed for strtod
+    double lon = strtod(longitude, &ptr);
+    double lat = strtod(longitude, &ptr);
+    double distance = TinyGPSPlus::distanceBetween(lat, lon, latOld, lonOld);
+    // Serial.print("distance:");
+    // Serial.println(distance);
+    if(distance>0.5){ //ho fatto mezzo metro
+      courseTo = TinyGPSPlus::courseTo(latOld, lonOld, lat, lon);
+      if(debugState == EXPERIMENT){
+        Serial.print("course:");
+        Serial.println(courseTo);
+      }
+      rate = (courseOld-courseTo);
+      if(rate>300)
+        rate-=360;
+      if(rate<-300)
+        rate+=360;
+      tinyWheelAngle = atan(rate/RAD_TO_DEG*wheelBase/distance) * RAD_TO_DEG * workingDir;
+      courseOld=courseTo;
+      latOld=lat;
+      lonOld=lon;
+    }
+
+    rate = (headingDual - headingDualOld);
     if(rate>300)
       rate-=360;
     if(rate<-300)
@@ -138,8 +180,22 @@ void HPR_Handler()
     
     headingDualRate = rate / RAD_TO_DEG * 20;  //20Hz update rate
 
-    dualWheelAngle = atan(headingDualRate*wheelBase/speed) * RAD_TO_DEG * workingDir;
-    dualWheelAngleWT61 = atan(fGyro[2]/RAD_TO_DEG*wheelBase/speed*-1) * RAD_TO_DEG * workingDir;
+    if(headingDualRate>5) //TBD
+      speedCorrect = speed + (headingDualRate * distanceFromCenterRearAxis);
+    else
+      speedCorrect = speed;
+    
+    if(debugState == EXPERIMENT){
+      Serial.print("speed:");
+      Serial.print(speed);
+      Serial.print(",spedcor:");
+      Serial.print(speedCorrect);
+      Serial.print(",headingDualRate:");
+      Serial.println(headingDualRate);
+    }
+    
+    dualWheelAngle = atan(headingDualRate*wheelBase/speedCorrect) * RAD_TO_DEG * workingDir;
+    dualWheelAngleWT61 = atan(fGyro[2]/RAD_TO_DEG*wheelBase/speedCorrect*-1) * RAD_TO_DEG * workingDir;
 
     if(abs(dualWheelAngle-steerAngleActual)<10 && abs(steerAngleActual)<MAXANGLECALC && speed>MINSPEEDCAL){ //se non c'è troppo differenza tra stima e reale (escludo manovre e retromarce) e non sto sterzando troppo e se andiamo almeno a 0.5*3.6=1.8 Km/h
       dualWheelAngleBuffer[indexBuffer] = dualWheelAngle; 
@@ -151,6 +207,15 @@ void HPR_Handler()
       indexBuffer = 0;
       if(abs(steerAngleActual)>MAXANGLECALC)  //shorter time only if i have turned back
         bufferLen = MINBUFFERLEN;
+    }
+
+    if(debugState == EXPERIMENT){
+      Serial.print("tinyAn:");
+      Serial.print(tinyWheelAngle);
+      Serial.print(",DualAn:");
+      Serial.print(dualWheelAngle);
+      Serial.print(",WTAn:");
+      Serial.println(dualWheelAngleWT61);
     }
 
     if(indexBuffer==bufferLen){   //buffer full -> calculate offset
@@ -167,7 +232,7 @@ void HPR_Handler()
       float meanWT = sumWT/(float)bufferLen;
 
       keyaEncoderOffsetNew = keyaEncoderOffset + ((meanDual-meanActual) * steerSettings.steerSensorCounts); //steerSettings.steerSensorCounts;
-      keyaEncoderOffsetWT += ((meanWT-meanActual) * steerSettings.steerSensorCounts); //steerSettings.steerSensorCounts;
+      keyaEncoderOffsetWT += ((meanWT-meanActual) * steerSettings.steerSensorCounts);
       indexBuffer = 0;
       bufferLen = MAXBUFFERLEN;
     }
@@ -180,27 +245,26 @@ void HPR_Handler()
   if (parser.getArg(2, umRoll))
   {
     rollDual = atof(umRoll)- 0.2;
-    digitalWrite(GPSGREEN_LED, HIGH); // Turn green GPS LED ON
-    Serial.print("rollDual:");
-    Serial.print(rollDual);
+
+    if(debugState == ROLL){
+      Serial.print("rollDual:");
+      Serial.print(rollDual);
+    }
 
     rollDual = rollKF.updateEstimate(rollDual);
 
-    //plotter
-    Serial.print(",rollKF:");
-    Serial.print(rollDual);
-    Serial.print(",angleWT:");
-    Serial.println(rollWT, 3);
-    //Serial.print(",");
-    //Serial.print("accx:");
-    //Serial.println(accXWT);
-  }
-  else
-  {
-    digitalWrite(GPSGREEN_LED, blink); // Flash the green GPS LED
+    if(debugState == ROLL){
+      Serial.print(",rollKF:");
+      Serial.print(rollDual);
+      Serial.print(",angleWT:");
+      Serial.println(rollWT, 3);
+    }
   }
   
   dualReadyHPR = true; // RelPos ready is true so PAOGI will send when the GGA is also ready
+
+  if(debugState == GPS)
+    Serial.print("  HPR  ");
 }
 
 void BuildNmea(void)
@@ -281,12 +345,9 @@ void BuildNmea(void)
     Eth_udpPAOGI.write(nmea, len);
     Eth_udpPAOGI.endPacket();
   }
-  if(debugSerial){
-    Serial.print("GPS-");
-    Serial.print(millis());
-    Serial.print(",");
+
+  if(debugState == GPS)
     Serial.println(nmea);
-  }
 }
 
 void CalculateChecksum(void)
