@@ -62,6 +62,8 @@ int indexBuffer=0;
 #include "zADS1115.h"
 ADS1115_lite adc(ADS1115_DEFAULT_ADDRESS); // Use this for the 16-bit version ADS1115
 
+SimpleKalmanFilter wheelSensor(0.1, 0.1, 0.1);
+
 #include <IPAddress.h>
 #include "BNO08x_AOG.h"
 
@@ -76,7 +78,7 @@ ADS1115_lite adc(ADS1115_DEFAULT_ADDRESS); // Use this for the 16-bit version AD
 uint8_t autoSteerUdpData[UDP_TX_PACKET_MAX_SIZE]; // Buffer For Receiving UDP Data
 #endif
 
-// loop time variables in microseconds
+// loop time variables in milliseconds
 const uint16_t LOOP_TIME = 25; // 40Hz
 uint32_t autsteerLastTime = LOOP_TIME;
 uint32_t currentTime = LOOP_TIME;
@@ -145,6 +147,8 @@ int indexWT61V=0;
 int32_t keyaEncoderOffsetWT = 0;
 int32_t keyaEncoderOffsetTiny = 0;
 int32_t keyaEncoderOffsetNewWT = 0;
+
+bool useADS;
 
 
 // pwm variables
@@ -244,11 +248,12 @@ void autosteerSetup()
   if (adc.testConnection())
   {
     Serial.println("ADC Connecton OK");
+    useADS=true;
   }
   else
   {
     Serial.println("ADC Connecton FAILED!");
-    //Autosteer_running = false;
+    useADS = false;
   }
 
   // 50Khz I2C
@@ -292,12 +297,14 @@ void autosteerLoop()
 #endif
   // Serial.println("AutoSteer loop");
 
-  // Loop triggers every 100 msec and sends back gyro heading, and roll, steer angle etc
+  // Loop triggers every 25 msec and sends back gyro heading, and roll, steer angle etc
   currentTime = systick_millis_count;
 
   if (currentTime - autsteerLastTime >= LOOP_TIME)
   {
     autsteerLastTime = currentTime;
+
+    keyaCommand(keyaEncoderQuery);
 
     // If connection lost to AgOpenGPS, the watchdog will count up and turn off steering
     if (watchdogTimer++ > 250)
@@ -431,31 +438,30 @@ void autosteerLoop()
       #endif
     */
 
-    // get steering position
-    if (steerConfig.SingleInputWAS) // Single Input ADS
-    {
-      adc.setMux(ADS1115_REG_CONFIG_MUX_SINGLE_0);
-      steeringPosition = adc.getConversion();
-      adc.triggerConversion(); // ADS1115 Single Mode
+    if (useADS){
+      // get steering position
+      if (steerConfig.SingleInputWAS) // Single Input ADS
+      {
+        adc.setMux(ADS1115_REG_CONFIG_MUX_SINGLE_0);
+        steeringPosition = adc.getConversion();
+        adc.triggerConversion(); // ADS1115 Single Mode
 
-      steeringPosition = (steeringPosition >> 1); // bit shift by 2  0 to 13610 is 0 to 5v
-      helloSteerPosition = steeringPosition - 6800;
-    }
-    else // ADS1115 Differential Mode
-    {
-      adc.setMux(ADS1115_REG_CONFIG_MUX_DIFF_0_1);
-      steeringPosition = adc.getConversion();
-      adc.triggerConversion();
+        steeringPosition = (steeringPosition >> 1); // bit shift by 2  0 to 13610 is 0 to 5v
+        helloSteerPosition = steeringPosition - 6800;
+      }
+      else // ADS1115 Differential Mode
+      {
+        adc.setMux(ADS1115_REG_CONFIG_MUX_DIFF_0_1);
+        steeringPosition = adc.getConversion();
+        adc.triggerConversion();
 
-      steeringPosition = (steeringPosition >> 1); // bit shift by 2  0 to 13610 is 0 to 5v
-      helloSteerPosition = steeringPosition - 6800;
+        steeringPosition = (steeringPosition >> 1); // bit shift by 2  0 to 13610 is 0 to 5v
+        helloSteerPosition = steeringPosition - 6800;
+      }
     }
 
     // DETERMINE ACTUAL STEERING POSITION
 
-    keyaCommand(keyaEncoderQuery);
-    delay(2);
-    KeyaBus_Receive();
 
     // update keyaOffset about at 0.5° per second
     if(keyaEncoderOffsetNew>keyaEncoderOffset){
@@ -474,6 +480,8 @@ void autosteerLoop()
     steeringPosition = (steeringPosition - 6805 + steerSettings.wasOffset); // 1/2 of full scale
 
     steerAngleSens = (float)(steeringPosition) / 76.0f; // steerSettings.steerSensorCounts;
+
+    steerAngleSens = wheelSensor.updateEstimate(steerAngleSens);
       // Ackerman fix
       if (steerAngleSens < 0)
         steerAngleSens = (steerAngleSens * 0.91);
@@ -545,7 +553,6 @@ void autosteerLoop()
 
       calcSteeringPID(); // do the pid
       motorDrive();      // out to motors the pwm value
-      // Autosteer Led goes GREEN if autosteering
 
       digitalWrite(AUTOSTEER_ACTIVE_LED, 1);
     }

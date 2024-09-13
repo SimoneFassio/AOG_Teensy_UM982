@@ -9,6 +9,7 @@
 #include <FlexCAN_T4.h>
 #include <REG.h>
 #include <wit_c_sdk.h>
+#include <SimpleKalmanFilter.h>
 // Ethernet Options (Teensy 4.1 Only)
 #ifdef ARDUINO_TEENSY41
 #include <NativeEthernet.h>
@@ -20,7 +21,7 @@ bool udpPassthrough = false;  // False = GPS neeeds to send GGA, VTG & HPR messa
 bool makeOGI = true;          // Set to true to make PAOGI messages. Else PANDA message will be made.
 const bool invertRoll = true; // Used for IMU with dual antenna
 bool baseLineCheck = false;   // Set to true to use IMU fusion with UM982
-float headingOffset = 90;
+float headingOffset = 0;
 // #define baseLineLimit 5       // Max CM differance in baseline for fusion
 
 // Roll correction can be entered in the AOG GUI. If not enter roll correction here.
@@ -101,6 +102,8 @@ void imuSetup();
 void passthroughSerial();
 void LedSetup();
 void getKeyaInfo();
+void angleStimeUpdate();
+void TinyGPSloop();
 
 ConfigIP networkAddress; // 3 bytes
 
@@ -274,13 +277,10 @@ void loop()
   udpNtrip();
 
   // Check for RTK Radio
-  if (SerialRTK.available())
-    SerialGPS->write(SerialRTK.read());
+  // if (SerialRTK.available())
+  //   SerialGPS->write(SerialRTK.read());
 
   // If both dual messages are ready, send to AgOpen
-  // Serial.print(dualReadyGGA);
-  // Serial.println(dualReadyHPR);
-  // delay(10);
   if (dualReadyGGA == true && dualReadyHPR == true)
   {
     imuHandler();
@@ -313,7 +313,6 @@ void loop()
   }
 
   debugLoop();
-
 } // End Loop
 //**************************************************************************
 
@@ -418,6 +417,11 @@ void configureUM982(){
         delay(100);
 
         SerialGPS->write("CONFIG PPP CONVERGE 30 50\r\n");
+        delay(100);
+
+        // Set heading offset
+        Serial.println("Setting heading offset 90");
+        SerialGPS->write("CONFIG HEADING OFFSET 90\r\n");
         delay(100);
 
         // Set heading smoothing

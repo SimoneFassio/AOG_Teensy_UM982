@@ -5,6 +5,7 @@ double headingDual = 0;
 double headingDualOld = 0;
 double headingDualRate = 0;
 float speed = 0;
+float speedCorrect=0;
 float headingVTG = 0;
 
 //values

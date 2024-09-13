@@ -31,9 +31,9 @@ BLA::Matrix<Nobs> obs; // observation vector
 
 void setupKF() {
   // Initialize the Kalman filter
-  kalman.F = {1.0};                         // State transition matrix
+  kalman.F = {1.0};                         // State transition matrix      Ak
   kalman.Q = {Q, 0.0, 
-              0.0, Q};                          // Process noise covariance
+              0.0, Q};                          // Process noise covariance Bk
   kalman.H = {1.0, 0.0, 
               0.0, 1.0};                    // Measurement matrix
   kalman.R = {R1, 0.0, 

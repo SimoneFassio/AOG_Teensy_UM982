@@ -1,17 +1,7 @@
 // Conversion to Hexidecimal
 const char *asciiHex = "0123456789ABCDEF";
 
-#define MAXBUFFERLEN 500      //consider 20Hz    500->25 sec
-#define MINBUFFERLEN 300      //consider 20Hz    300->15 sec
-#define MAXANGLECALC 15
-#define MINSPEEDCAL 0.5       //  m/s
 
-float dualWheelAngleBuffer[MAXBUFFERLEN];
-float steerAngleActualBuffer[MAXBUFFERLEN];
-float WTWheelAngleBuffer[MAXBUFFERLEN];
-int bufferLen = MINBUFFERLEN;
-
-#include <SimpleKalmanFilter.h>
 
 /*
  SimpleKalmanFilter(e_mea, e_est, q);
@@ -20,16 +10,6 @@ int bufferLen = MINBUFFERLEN;
  q: Process Noise
  */
 SimpleKalmanFilter rollKF(0.1, 0.1, 0.1);
-
-#include <TinyGPSPlus.h>
-
-double latOld=0;
-double lonOld=0;
-double courseTo=0;
-float tinyWheelAngle=0;
-double courseOld=0;
-float speedCorrect=0;
-
 
 // the new PANDA sentence buffer
 char nmea[100];
@@ -53,7 +33,7 @@ char speedKnots[10] = {};
 // HPR
 char umHeading[8];
 char umRoll[8];
-int solQuality;
+char solQuality;
 
 
 
@@ -96,7 +76,7 @@ void GGA_Handler() // Rec'd GGA
   {
     digitalWrite(GGAReceivedLED, HIGH);
   }
-  else if (solQuality != 4)  //no RTK
+  else if (solQuality != "4")  //no RTK
   {
     digitalWrite(GGAReceivedLED, LOW);
   }
@@ -109,23 +89,24 @@ void GGA_Handler() // Rec'd GGA
 
   if(debugState == GPS)
     Serial.print("  GGA  ");
+
+  TinyGPSloop();
 }
 
 void VTG_Handler()
 {
   // vtg heading
   parser.getArg(0, vtgHeading);  //i can use for reverse detection (180° from dualHeading)
-  headingVTG = atof(vtgHeading);
-
-  if(abs((int)(headingVTG-headingDual)%360)>120 && speed>MINSPEEDCAL)  //reverse
-    workingDir=-1;
-  else
-    workingDir=1;
-
 
   // vtg Speed knots
   parser.getArg(4, speedKnots);
   speed = atof(speedKnots) * 1852 / 3600; // m/s
+
+  headingVTG = atof(vtgHeading);
+  if(abs((int)(headingVTG-headingDual)%360)>120 && speed>0.5)  //reverse
+    workingDir=-1;
+  else
+    workingDir=1;
 
   if(debugState == GPS)
     Serial.print("  VTG  ");
@@ -144,107 +125,32 @@ void HPR_Handler()
   // Solution quality factor
   parser.getArg(4, solQuality);
 
-  //if (solQuality == 4){  //RTK
-  if (4 == 4){  //RTK
-    double rate;
-    
-    //tinyGPS
-    char* ptr; // just a dummy value needed for strtod
-    double lon = strtod(longitude, &ptr);
-    double lat = strtod(longitude, &ptr);
-    double distance = TinyGPSPlus::distanceBetween(lat, lon, latOld, lonOld);
-    // Serial.print("distance:");
-    // Serial.println(distance);
-    if(distance>0.5){ //ho fatto mezzo metro
-      courseTo = TinyGPSPlus::courseTo(latOld, lonOld, lat, lon);
-      if(debugState == EXPERIMENT){
-        Serial.print("course:");
-        Serial.println(courseTo);
-      }
-      rate = (courseOld-courseTo);
-      if(rate>300)
-        rate-=360;
-      if(rate<-300)
-        rate+=360;
-      tinyWheelAngle = atan(rate/RAD_TO_DEG*wheelBase/distance) * RAD_TO_DEG * workingDir;
-      courseOld=courseTo;
-      latOld=lat;
-      lonOld=lon;
-    }
+  headingDualRate = (headingDual - headingDualOld);
+  if(headingDualRate>300)
+    headingDualRate-=360;
+  if(headingDualRate<-300)
+    headingDualRate+=360;
+  
+  headingDualRate = headingDualRate * 20;  //20Hz update rate
 
-    rate = (headingDual - headingDualOld);
-    if(rate>300)
-      rate-=360;
-    if(rate<-300)
-      rate+=360;
-    
-    headingDualRate = rate / RAD_TO_DEG * 20;  //20Hz update rate
-
-    if(headingDualRate>5) //TBD
-      speedCorrect = speed + (headingDualRate * distanceFromCenterRearAxis);
-    else
-      speedCorrect = speed;
-    
-    if(debugState == EXPERIMENT){
-      Serial.print("speed:");
-      Serial.print(speed);
-      Serial.print(",spedcor:");
-      Serial.print(speedCorrect);
-      Serial.print(",headingDualRate:");
-      Serial.println(headingDualRate);
-    }
-    
-    dualWheelAngle = atan(headingDualRate*wheelBase/speedCorrect) * RAD_TO_DEG * workingDir;
-    dualWheelAngleWT61 = atan(fGyro[2]/RAD_TO_DEG*wheelBase/speedCorrect*-1) * RAD_TO_DEG * workingDir;
-
-    if(abs(dualWheelAngle-steerAngleActual)<10 && abs(steerAngleActual)<MAXANGLECALC && speed>MINSPEEDCAL){ //se non c'è troppo differenza tra stima e reale (escludo manovre e retromarce) e non sto sterzando troppo e se andiamo almeno a 0.5*3.6=1.8 Km/h
-      dualWheelAngleBuffer[indexBuffer] = dualWheelAngle; 
-      steerAngleActualBuffer[indexBuffer] = steerAngleActual;
-      WTWheelAngleBuffer[indexBuffer] = dualWheelAngleWT61;
-      indexBuffer++;
-    }
-    else{                                   //altrimenti scarto precedenti misurazioni
-      indexBuffer = 0;
-      if(abs(steerAngleActual)>MAXANGLECALC)  //shorter time only if i have turned back
-        bufferLen = MINBUFFERLEN;
-    }
-
-    if(debugState == EXPERIMENT){
-      Serial.print("tinyAn:");
-      Serial.print(tinyWheelAngle);
-      Serial.print(",DualAn:");
-      Serial.print(dualWheelAngle);
-      Serial.print(",WTAn:");
-      Serial.println(dualWheelAngleWT61);
-    }
-
-    if(indexBuffer==bufferLen){   //buffer full -> calculate offset
-      float sumDual=0;
-      float sumActual=0;
-      float sumWT=0;
-      for(int i=0; i<bufferLen; i++){
-        sumDual += dualWheelAngleBuffer[i];
-        sumActual += steerAngleActualBuffer[i];
-        sumWT += WTWheelAngleBuffer[i];
-      }
-      float meanDual = sumDual/(float)bufferLen;
-      float meanActual = sumActual/(float)bufferLen;
-      float meanWT = sumWT/(float)bufferLen;
-
-      keyaEncoderOffsetNew = keyaEncoderOffset + ((meanDual-meanActual) * steerSettings.steerSensorCounts); //steerSettings.steerSensorCounts;
-      keyaEncoderOffsetWT += ((meanWT-meanActual) * steerSettings.steerSensorCounts);
-      indexBuffer = 0;
-      bufferLen = MAXBUFFERLEN;
-    }
+  if(headingDualRate>5) //TBD
+    speedCorrect = speed + (headingDualRate/ RAD_TO_DEG * distanceFromCenterRearAxis);
+  else
+    speedCorrect = speed;
+  
+  if(debugState == EXPERIMENT){
+    Serial.print("speed:");
+    Serial.print(speed);
+    Serial.print(",spedcor:");
+    Serial.print(speedCorrect);
+    Serial.print(",headingDualRate:");
+    Serial.println(headingDualRate);
   }
-
-
-
 
   // HPR Substitute pitch for roll
   if (parser.getArg(2, umRoll))
   {
-    rollDual = atof(umRoll)- 0.2;
+    rollDual = atof(umRoll); //-0.2
 
     if(debugState == ROLL){
       Serial.print("rollDual:");
@@ -265,6 +171,8 @@ void HPR_Handler()
 
   if(debugState == GPS)
     Serial.print("  HPR  ");
+
+  angleStimeUpdate();
 }
 
 void BuildNmea(void)
