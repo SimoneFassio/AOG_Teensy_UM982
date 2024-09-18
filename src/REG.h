@@ -263,8 +263,8 @@ extern "C" {
 #define SAVE_SWRST	0xFF
 
 /* ORIENT */
-#define ORIENT_HERIZONE	0
-#define ORIENT_VERTICLE	1
+#define ORIENT_HOR	0
+#define ORIENT_VER	1
 
 /* BANDWIDTH */
 #define BANDWIDTH_256HZ	0

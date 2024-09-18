@@ -104,6 +104,8 @@ void LedSetup();
 void getKeyaInfo();
 void angleStimeUpdate();
 void TinyGPSloop();
+void correlationSetup();
+void correlationLoop();
 
 ConfigIP networkAddress; // 3 bytes
 
@@ -171,6 +173,7 @@ bool Autosteer_running = false; // Auto set off in autosteer setup
 bool Ethernet_running = false; // Auto set on in ethernet setup
 
 float WT61[3];
+float tempWT;
 
 int32_t keyaEncoderOffset = 0;
 int32_t keyaEncoderOffsetNew = 0;
@@ -178,6 +181,7 @@ int32_t keyaEncoderOffsetNew = 0;
 enum debugList {
   SETUP,
   EXPERIMENT,
+  CORRELATION,
   ROLL,
   WAS,
   GPS,
@@ -197,6 +201,8 @@ uint32_t debugTime = 0;
 void setup()
 {
   delay(500); // Small delay so serial can monitor start up
+
+  correlationSetup();
 
   LedSetup();
 
@@ -304,6 +310,7 @@ void loop()
     digitalWrite(CAN_ACTIVE_LED, LOW);
     keyaEncoderOffset = 0;
     keyaEncoderOffsetNew = 0;
+    keyaDetected = false;
   }
   if (Autosteer_running)
     autosteerLoop();
@@ -373,7 +380,7 @@ void configureUM982(){
     if (strstr(incoming, "CONFIG ANTENNADELTAHEN") != NULL)
     {
       Serial.println("Got the config line");
-      if (strstr(incoming, "ANTENNADELTAHEN 0.0099 0.0099 0.0091") != NULL)
+      if (strstr(incoming, "ANTENNADELTAHEN 0.0099 0.0099 0.009") != NULL)
       {
         Serial.println("And it is already configured");
         Serial.println();
@@ -466,7 +473,7 @@ void configureUM982(){
 
         // Setting the flag to signal UM982 is configured for AOG
         Serial.println("Setting UM982 configured flag");
-        SerialGPS->write("CONFIG ANTENNADELTAHEN 0.0099 0.0099 0.0091\r\n");
+        SerialGPS->write("CONFIG ANTENNADELTAHEN 0.0099 0.0099 0.009\r\n");
         delay(100);
 
         // Saving the configuration in the UM982
@@ -581,6 +588,7 @@ void debugLoop(){
     else
       debugState=debugState+1;
 
+    Serial.println("\n\n");
     switch(debugState){
     case SETUP:
       Serial.println("DEBUG: SETUP");
@@ -610,6 +618,7 @@ void debugLoop(){
       Serial.println("DEBUG: STATE_INFO");
       break;
     }
+    Serial.println("\n");
 
     if(debugState == SETUP)
       digitalWrite(DEBUG_LED, LOW);
@@ -622,6 +631,9 @@ void debugLoop(){
 
   if(debugState == STATE_INFO && systick_millis_count - debugTime > 10000){
     getKeyaInfo();
+    Serial.print("\nWT61 temperature: ");
+    Serial.print(tempWT);
+    Serial.println(" C");
     debugTime = systick_millis_count;
   }
 }

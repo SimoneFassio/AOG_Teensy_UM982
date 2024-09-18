@@ -161,13 +161,13 @@ void KeyaBus_Receive()
     // heartbeat 00:07:00:00:00:00:00:[ID]
     if (KeyaBusReceiveData.id == 0x07000001)
     {
+      KeyaBeatTime = systick_millis_count;
       if (!keyaDetected)
       {
         Serial.println("Keya heartbeat detected! Enabling Keya canbus & using reported motor current for disengage");
         keyaDetected = true;
         keyaCommand(keyaVersionQuery);
         digitalWrite(CAN_ACTIVE_LED, 1);
-        KeyaBeatTime = systick_millis_count;
       }
       // 0-1 - Cumulative value of angle (360 def / circle)
       // 2-3 - Motor speed, signed int eg -500 or 500

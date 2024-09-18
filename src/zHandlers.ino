@@ -33,7 +33,7 @@ char speedKnots[10] = {};
 // HPR
 char umHeading[8];
 char umRoll[8];
-char solQuality;
+char solQuality[2];
 
 
 
@@ -76,7 +76,7 @@ void GGA_Handler() // Rec'd GGA
   {
     digitalWrite(GGAReceivedLED, HIGH);
   }
-  else if (solQuality != "4")  //no RTK
+  else if (atoi(solQuality) != 4)  //no RTK
   {
     digitalWrite(GGAReceivedLED, LOW);
   }
@@ -132,20 +132,21 @@ void HPR_Handler()
     headingDualRate+=360;
   
   headingDualRate = headingDualRate * 20;  //20Hz update rate
+  headingDualRateSmooth = (headingDualRateSmooth*0.95)+(headingDualRate*0.05);
 
-  if(headingDualRate>5) //TBD
+  if(headingDualRateSmooth>6) //TBD
     speedCorrect = speed + (headingDualRate/ RAD_TO_DEG * distanceFromCenterRearAxis);
   else
     speedCorrect = speed;
   
-  if(debugState == EXPERIMENT){
-    Serial.print("speed:");
-    Serial.print(speed);
-    Serial.print(",spedcor:");
-    Serial.print(speedCorrect);
-    Serial.print(",headingDualRate:");
-    Serial.println(headingDualRate);
-  }
+  // if(debugState == EXPERIMENT){
+  //   Serial.print("speed:");
+  //   Serial.print(speed);
+  //   Serial.print(",spedcor:");
+  //   Serial.print(speedCorrect);
+  //   Serial.print(",headingDualRate:");
+  //   Serial.println(headingDualRate);
+  // }
 
   // HPR Substitute pitch for roll
   if (parser.getArg(2, umRoll))

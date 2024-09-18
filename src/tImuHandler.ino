@@ -4,6 +4,7 @@ double pitchDual = 0;
 double headingDual = 0;
 double headingDualOld = 0;
 double headingDualRate = 0;
+double headingDualRateSmooth = 0;
 float speed = 0;
 float speedCorrect=0;
 float headingVTG = 0;

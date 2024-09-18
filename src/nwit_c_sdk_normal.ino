@@ -18,7 +18,10 @@ const uint32_t c_uiBaud[8] = {0,4800, 9600, 19200, 38400, 57600, 115200, 230400}
 float rollWT = 0;
 float offsetRollWT = 0;
 float headingWT = 0;
+float headingRateWT = 0;
 float accXWT = 0;
+
+SimpleKalmanFilter headingRate(0.5, 0.1, 0.01);
 
 void setupWT61() {
 	WitInit(WIT_PROTOCOL_NORMAL, 0x50);
@@ -34,12 +37,22 @@ void setupWT61() {
 	if(WitSetUartBaud(WIT_BAUD_115200) != WIT_HAL_OK) Serial.println("Set Baud Error");
 	else 	SerialWT61.begin(c_uiBaud[WIT_BAUD_115200]);
 
-	if(WitSetOutputRate(RRATE_50HZ) != WIT_HAL_OK) Serial.println("Set Baud Error");
-	else Serial.println("Set 50Hz return rate");
+	if(WitSetOutputRate(RRATE_100HZ) != WIT_HAL_OK) Serial.println("Set Baud Error");
+	else Serial.println("Set 100Hz return rate");
 
-	Serial.println();
+	// Serial.println("calibrating WT61");
+	// if(WitSetInstallDir(ORIENT_HOR) != WIT_HAL_OK) Serial.print("error setDir");
+	// delay(10);
+	// if(WitStartAccCali() != WIT_HAL_OK) Serial.print("error StartCal");
+	// delay(5000);
+	// if(WitStopAccCali() != WIT_HAL_OK) Serial.print("error StopCal");
+	// delay(2000);
+	// if(WitCaliRefAngle() != WIT_HAL_OK) Serial.print("error refAngle");
+	// if(WitAlgo(ALGRITHM6) != WIT_HAL_OK) Serial.print("error algo");
 }
+
 float fAcc[3], fGyro[3], fAngle[3];
+
 void loopWT61() {
 	int i;
     while (SerialWT61.available())
@@ -65,33 +78,40 @@ void loopWT61() {
 			// Serial.print("\r\n");
 			s_cDataUpdate &= ~ACC_UPDATE;
 			accXWT = fAcc[0];
+			tempWT=sReg[TEMP]/100.0f;
 		}
 
 		if(s_cDataUpdate & GYRO_UPDATE)
 		{
-			// Serial.print("gyro:");
+			Serial.print("gyro:");
 			// Serial.print(fGyro[0], 1);
 			// Serial.print(",");
-			// // Serial.print(fGyro[1], 1);
-			// // Serial.print(" ");
-			// // Serial.print(fGyro[2], 1);
-			// // Serial.print("\r\n");
+			// Serial.print(fGyro[1], 1);
+			// Serial.print(" ");
+			Serial.print(fGyro[2], 1);
+			Serial.print("\r\n");
+			headingRateWT = headingRate.updateEstimate(fGyro[2]);
+			Serial.print("gyroKF:");
+			Serial.print(headingRateWT, 1);
+			Serial.print("\r\n");
 			s_cDataUpdate &= ~GYRO_UPDATE;
 		}
 		if(s_cDataUpdate & ANGLE_UPDATE)
 		{
-			//Serial.print("angleWT:");
-			//Serial.println(fAngle[0], 3);
+			Serial.print("angleWT:");
+			Serial.print(fAngle[0], 3);
 			// Serial.print(" ");
 			// Serial.print(fAngle[1], 3);
 			// Serial.print(" ");
 			// Serial.print(fAngle[2], 3);
-			// Serial.print("\r\n");
+			Serial.print("\r\n");
 			s_cDataUpdate &= ~ANGLE_UPDATE;
 			if (steerConfig.IsUseY_Axis)
 				rollWT = fAngle[1] + offsetRollWT;
 			else
 				rollWT = fAngle[0] + offsetRollWT;
+			Serial.print("rollKF:");
+			Serial.println(rollWT, 3);
 			headingWT = fAngle[2];
 		}
 		s_cDataUpdate = 0;

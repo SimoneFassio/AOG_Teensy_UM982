@@ -500,17 +500,41 @@ int32_t WitSetContent(int32_t uiRsw)
 }
 
 // set Angle reference to review if necessary
-// int32_t WitCaliRefAngle(void)
-// {
-// 	if(s_uiProtoclo == WIT_PROTOCOL_JY61) return WIT_HAL_INVAL;
-// 	if(WitWriteReg(KEY, KEY_UNLOCK) != WIT_HAL_OK)	    return  WIT_HAL_ERROR;
-// 	if(p_WitDelaymsFunc != NULL)
-// 	{
-// 	   p_WitDelaymsFunc(20);
-// 	}
-// 	else return WIT_HAL_EMPTY;
-// 	if(WitWriteReg(CALSW, CALREFANGLE) != WIT_HAL_OK)	return  WIT_HAL_ERROR;
-// 	return WIT_HAL_OK;
-// }
+int32_t WitCaliRefAngle(void)
+{
+	if(WitWriteReg(KEY, KEY_UNLOCK) != WIT_HAL_OK)	    return  WIT_HAL_ERROR;
+	if(s_uiProtoclo == WIT_PROTOCOL_MODBUS)	p_WitDelaymsFunc(20);
+	else if(s_uiProtoclo == WIT_PROTOCOL_NORMAL) p_WitDelaymsFunc(1);
+	else ;
+	if(WitWriteReg(CALSW, CALREFANGLE) != WIT_HAL_OK)	return  WIT_HAL_ERROR;
+	return WIT_HAL_OK;
+}
 
+int32_t WitSetInstallDir(int32_t dir)
+{
+    if(dir!=1 && dir!=0)
+	{
+		return WIT_HAL_INVAL;
+	}
+	if(WitWriteReg(KEY, KEY_UNLOCK) != WIT_HAL_OK)	    return  WIT_HAL_ERROR;
+	if(s_uiProtoclo == WIT_PROTOCOL_MODBUS)	p_WitDelaymsFunc(20);
+	else if(s_uiProtoclo == WIT_PROTOCOL_NORMAL) p_WitDelaymsFunc(1);
+	else ;
+	if(WitWriteReg(ORIENT, dir) != WIT_HAL_OK)	return  WIT_HAL_ERROR;
+	return WIT_HAL_OK;
+}
+
+int32_t WitAlgo(int32_t axis6)
+{
+    if(axis6!=1 && axis6!=0)
+	{
+		return WIT_HAL_INVAL;
+	}
+	if(WitWriteReg(KEY, KEY_UNLOCK) != WIT_HAL_OK)	    return  WIT_HAL_ERROR;
+	if(s_uiProtoclo == WIT_PROTOCOL_MODBUS)	p_WitDelaymsFunc(20);
+	else if(s_uiProtoclo == WIT_PROTOCOL_NORMAL) p_WitDelaymsFunc(1);
+	else ;
+	if(WitWriteReg(AXIS6, axis6) != WIT_HAL_OK)	return  WIT_HAL_ERROR;
+	return WIT_HAL_OK;
+}
 

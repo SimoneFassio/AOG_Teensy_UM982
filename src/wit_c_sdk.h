@@ -123,6 +123,9 @@ int32_t WitSetBandwidth(int32_t uiBaudWidth);
 int32_t WitSetOutputRate(int32_t uiRate);
 int32_t WitSetContent(int32_t uiRsw);
 int32_t WitSetCanBaud(int32_t uiBaudIndex);
+int32_t WitCaliRefAngle(void);
+int32_t WitSetInstallDir(int32_t dir);
+int32_t WitAlgo(int32_t axis6);
 
 char CheckRange(short sTemp,short sMin,short sMax);
 

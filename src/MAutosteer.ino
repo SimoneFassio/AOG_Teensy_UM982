@@ -14,6 +14,8 @@ uint8_t keyaEncoderSpeedQuery[] = {0x40, 0x03, 0x21, 0x01};
 
 /// to move
 int indexBuffer=0;
+double X   = 0.0;            // x_^(t|t) stato filtrato
+
 
 
 ////////////////// User Settings /////////////////////////
@@ -305,6 +307,8 @@ void autosteerLoop()
     autsteerLastTime = currentTime;
 
     keyaCommand(keyaEncoderQuery);
+    //delay(2);
+    //KeyaBus_Receive();
 
     // If connection lost to AgOpenGPS, the watchdog will count up and turn off steering
     if (watchdogTimer++ > 250)
@@ -490,7 +494,8 @@ void autosteerLoop()
     //   ***** make sure that negative steer angle makes a left turn and positive value is a right turn *****
     if (steerConfig.InvertWAS)
     {
-      steerAngleActual = (float)(keyaEncoderValue) /  steerSettings.steerSensorCounts;   //steerSettings.steerSensorCounts;
+      //steerAngleActual = (float)(keyaEncoderValue + keyaEncoderOffset) /  steerSettings.steerSensorCounts;   //steerSettings.steerSensorCounts;
+      steerAngleActual = X;
     }
     else
     {
@@ -549,6 +554,7 @@ void autosteerLoop()
         digitalWrite(DIR1_RL_ENABLE, 1);
 
       steerAngleError = steerAngleActual - steerAngleSetPoint; // calculate the steering error
+      //steerAngleError = X - steerAngleSetPoint; // calculate the steering error
       // if (abs(steerAngleError)< steerSettings.lowPWM) steerAngleError = 0;
 
       calcSteeringPID(); // do the pid
@@ -645,6 +651,10 @@ void ReceiveUdp()
 
         // Bit 10 Tram
         tram = autoSteerUdpData[10];
+          if(debugState == EXPERIMENT){
+            Serial.print("byte10:");
+            Serial.println(tram-127);
+          }
 
         // Bit 11
         relay = autoSteerUdpData[11];
