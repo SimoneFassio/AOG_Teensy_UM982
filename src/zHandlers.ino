@@ -110,6 +110,7 @@ void VTG_Handler()
 
   if(debugState == GPS)
     Serial.print("  VTG  ");
+
 }
 
 // UM982 Support
@@ -173,7 +174,7 @@ void HPR_Handler()
   if(debugState == GPS)
     Serial.print("  HPR  ");
 
-  angleStimeUpdate();
+  //angleStimeUpdate();
 }
 
 void BuildNmea(void)

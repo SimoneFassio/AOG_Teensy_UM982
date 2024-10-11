@@ -18,7 +18,7 @@
 
 /************************* User Settings *************************/
 bool udpPassthrough = false;  // False = GPS neeeds to send GGA, VTG & HPR messages. True = GPS needs to send KSXT messages only.
-bool makeOGI = true;          // Set to true to make PAOGI messages. Else PANDA message will be made.
+bool makeOGI = false;          // Set to true to make PAOGI messages. Else PANDA message will be made.
 const bool invertRoll = true; // Used for IMU with dual antenna
 bool baseLineCheck = false;   // Set to true to use IMU fusion with UM982
 float headingOffset = 0;
@@ -48,8 +48,8 @@ struct ConfigIP
   uint8_t ipThree = 5;
 };
 
-float wheelBase = 2.38;   //of the tractor (meters)
-float distanceFromCenterRearAxis = 0.7; // meters
+float wheelBase = 2.33;   //of the tractor (meters)
+float distanceFromCenterRearAxis = 0; // meters
 /************************* End User Settings *********************/
 
 bool gotCR = false;

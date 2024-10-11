@@ -14,8 +14,8 @@ double courseOld=0;
 
 #define MAXBUFFERLEN 500      //consider 20Hz    500->25 sec
 #define MINBUFFERLEN 300      //consider 20Hz    300->15 sec
-#define MAXANGLECALC 15
-#define MINSPEEDCAL 0.8       //  m/s
+#define MAXANGLECALC 25
+#define MINSPEEDCAL 0.5       //  m/s
 
 float dualWheelAngleBuffer[MAXBUFFERLEN];
 float steerAngleActualBuffer[MAXBUFFERLEN];
@@ -23,8 +23,8 @@ float WTWheelAngleBuffer[MAXBUFFERLEN];
 int bufferLen = MINBUFFERLEN;
 
 //KALMAN
-double R   = 1.5;              //varianza del rumore sulla misura dell'angolo stimato
-double Q   = 1e-03;          // varianza del disturbo sul processo
+double R   = 1.5;            //varianza del rumore sulla misura dell'angolo stimato
+double Q   = 1e-01;          // varianza del disturbo sul processo
 double Pp  = 0.0;            // P(t|t-1) varianza dell'errore di predizione
 double K   = 0.0;            // Kalman gain
 double P   = 1.0;            // P(t|t) varianza dell'errore di filtraggio
@@ -66,8 +66,9 @@ void TinyGPSloop(){
 }
 
 void angleStimeUpdate(){
+  workingDir=1;
   dualWheelAngle = atan(headingDualRate/RAD_TO_DEG*wheelBase/speedCorrect) * RAD_TO_DEG * workingDir;
-  dualWheelAngleWT61 = atan(headingRateWT/RAD_TO_DEG*wheelBase/speedCorrect*-1) * RAD_TO_DEG * workingDir;
+  dualWheelAngleWT61 = atan(headingRateWT/RAD_TO_DEG*wheelBase/speed*-1) * RAD_TO_DEG * workingDir;
 
   if(abs(dualWheelAngle-steerAngleActual)<10 && abs(steerAngleActual)<MAXANGLECALC && speed>MINSPEEDCAL){ //se non c'è troppo differenza tra stima e reale (escludo manovre e retromarce) e non sto sterzando troppo e se andiamo almeno a 0.5*3.6=1.8 Km/h
     dualWheelAngleBuffer[indexBuffer] = dualWheelAngle; 
@@ -89,6 +90,8 @@ void angleStimeUpdate(){
     Serial.print(",WTAn:");
     Serial.println(dualWheelAngleWT61);
   }
+  Serial.print("WTAn:");
+  Serial.println(dualWheelAngleWT61);
 
   if(indexBuffer==bufferLen){   //buffer full -> calculate offset
     float sumDual=0;
@@ -110,10 +113,10 @@ void angleStimeUpdate(){
     bufferLen = MAXBUFFERLEN;
   }
   //if(guidanceStatus && speed>MINSPEEDCAL)
-  if(abs(dualWheelAngle-steerAngleActual)<10 && abs(steerAngleActual)<MAXANGLECALC && speed>MINSPEEDCAL){ //se non c'è troppo differenza tra stima e reale (escludo manovre e retromarce) e non sto sterzando troppo e se andiamo almeno a 0.5*3.6=1.8 Km/h
+  //if(speed>MINSPEEDCAL){ //se non c'è troppo differenza tra stima e reale (escludo manovre e retromarce) e non sto sterzando troppo e se andiamo almeno a 0.5*3.6=1.8 Km/h
     KalmanUpdate();
     correlationLoop();
-  }
+  //}
 }
 
 void KalmanUpdate(){
@@ -124,14 +127,20 @@ void KalmanUpdate(){
   //   angleDiff = buffer.pop(); //retrive from tail
 
   // --- Kalman process ---
-  Pp = P + Q;                                 // (PREDICTION) predizione della varianza dell'errore al prossimo step
   Xp = X + angleDiff;                         // (PREDICTION) predizione dello stato al prossimo step
-  K = Pp/(Pp + R);                            // (CORRECTION) Kalman gain
-  P = (1-K)*Pp;                               // (CORRECTION) aggiornamento della varianza dell'errore di filtraggio
-  X = Xp + K*(dualWheelAngle-Xp);             // (CORRECTION) stima di Kalman dell'output del sensore
+  if(speed>MINSPEEDCAL){
+    Pp = P + Q;                                 // (PREDICTION) predizione della varianza dell'errore al prossimo step
+    K = Pp/(Pp + R);                            // (CORRECTION) Kalman gain
+    P = (1-K)*Pp;                               // (CORRECTION) aggiornamento della varianza dell'errore di filtraggio
+    X = Xp + K*(dualWheelAngleWT61-Xp);             // (CORRECTION) stima di Kalman dell'output del sensore
+  }
+  else
+  X=Xp;
+
+  X=(float)(keyaEncoderValue) /  steerSettings.steerSensorCounts;
 
   if (steerConfig.InvertWAS){ ///////////////////////////
-    kalmanErrorSum += K*(dualWheelAngle-Xp); 
+    kalmanErrorSum += K*(dualWheelAngleWT61-Xp); 
     counter++;
     if(counter==100){
       keyaEncoderOffsetNew = keyaEncoderOffset + (kalmanErrorSum/counter * steerSettings.steerSensorCounts);
@@ -143,10 +152,10 @@ void KalmanUpdate(){
 
   steerAngleActualOld = (float)(keyaEncoderValue) /  steerSettings.steerSensorCounts;
 
-  if(debugState == EXPERIMENT){
+  //if(debugState == EXPERIMENT){
     Serial.print("KalmanState:");
     Serial.println(X);
-  }
+  //}
 }
 
 void correlationSetup(){

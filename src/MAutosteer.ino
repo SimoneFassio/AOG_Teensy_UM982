@@ -495,6 +495,7 @@ void autosteerLoop()
     if (steerConfig.InvertWAS)
     {
       //steerAngleActual = (float)(keyaEncoderValue + keyaEncoderOffset) /  steerSettings.steerSensorCounts;   //steerSettings.steerSensorCounts;
+      angleStimeUpdate();
       steerAngleActual = X;
     }
     else
@@ -514,7 +515,7 @@ void autosteerLoop()
     float meanDual=sumDual/400.0f;
     float meanActual=sumActual/400.0f;
 
-    if(debugState == WAS || debugState == EXPERIMENT){
+    //if(debugState == WAS || debugState == EXPERIMENT){
     //Serial.print(indexBuffer);
     //Serial.print("\t");
     Serial.print("sens:");
@@ -530,11 +531,11 @@ void autosteerLoop()
     // Serial.print(meanActual);
     // Serial.print(",");
     Serial.print("Keya:");
-    Serial.println(steerAngleActual);
+    Serial.println((float)(keyaEncoderValue + keyaEncoderOffset) /  steerSettings.steerSensorCounts);
     // Serial.print(",");
     // Serial.print("KeyaWT:");
     // Serial.print((float)(keyaEncoderValue + keyaEncoderOffsetWT) / 86.0f);
-    }
+   // }
 
     if (watchdogTimer < WATCHDOG_THRESHOLD)
     {

@@ -83,36 +83,36 @@ void loopWT61() {
 
 		if(s_cDataUpdate & GYRO_UPDATE)
 		{
-			Serial.print("gyro:");
+			// Serial.print("gyro:");
 			// Serial.print(fGyro[0], 1);
 			// Serial.print(",");
 			// Serial.print(fGyro[1], 1);
 			// Serial.print(" ");
-			Serial.print(fGyro[2], 1);
-			Serial.print("\r\n");
+			// Serial.print(fGyro[2], 1);
+			// Serial.print("\r\n");
 			headingRateWT = headingRate.updateEstimate(fGyro[2]);
-			Serial.print("gyroKF:");
-			Serial.print(headingRateWT, 1);
-			Serial.print("\r\n");
+			// Serial.print("gyroKF:");
+			// Serial.print(headingRateWT, 1);
+			// Serial.print("\r\n");
 			s_cDataUpdate &= ~GYRO_UPDATE;
 		}
 		if(s_cDataUpdate & ANGLE_UPDATE)
 		{
-			Serial.print("angleWT:");
-			Serial.print(fAngle[0], 3);
+			// Serial.print("angleWT:");
+			// Serial.print(fAngle[0], 3);
 			// Serial.print(" ");
 			// Serial.print(fAngle[1], 3);
 			// Serial.print(" ");
 			// Serial.print(fAngle[2], 3);
-			Serial.print("\r\n");
+			// Serial.print("\r\n");
 			s_cDataUpdate &= ~ANGLE_UPDATE;
 			if (steerConfig.IsUseY_Axis)
 				rollWT = fAngle[1] + offsetRollWT;
 			else
 				rollWT = fAngle[0] + offsetRollWT;
-			Serial.print("rollKF:");
-			Serial.println(rollWT, 3);
-			headingWT = fAngle[2];
+			// Serial.print("rollKF:");
+			// Serial.println(rollWT, 3);
+			headingWT = fAngle[2] + 180;
 		}
 		s_cDataUpdate = 0;
 	}
