@@ -198,8 +198,10 @@ void imuHandler()
     }
     else
     {
-      itoa(rollWT * 10, rollPanda, 10);
-      itoa(headingWT * 10, headingPanda, 10);
+      float rol = atof(insRoll);
+      float head = atof(insHeading);
+      itoa(rol * 10, rollPanda, 10);
+      itoa(head * 10, headingPanda, 10);
     }
 
     // the pitch

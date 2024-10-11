@@ -35,6 +35,11 @@ char umHeading[8];
 char umRoll[8];
 char solQuality[2];
 
+//INS
+char insHeading[8];
+char insRoll[8];
+char insPitch[8];
+
 
 
 // If odd characters showed up.
@@ -49,13 +54,13 @@ void GGA_Handler() // Rec'd GGA
   // fix time
   parser.getArg(0, fixTime);
 
-  // latitude
-  parser.getArg(1, latitude);
-  parser.getArg(2, latNS);
+  // // latitude
+  // parser.getArg(1, latitude);
+  // parser.getArg(2, latNS);
 
-  // longitude
-  parser.getArg(3, longitude);
-  parser.getArg(4, lonEW);
+  // // longitude
+  // parser.getArg(3, longitude);
+  // parser.getArg(4, lonEW);
 
   // fix quality
   parser.getArg(5, fixQuality);
@@ -66,31 +71,31 @@ void GGA_Handler() // Rec'd GGA
   // HDOP
   parser.getArg(7, HDOP);
 
-  // altitude
-  parser.getArg(8, altitude);
+  // // altitude
+  // parser.getArg(8, altitude);
 
-  // time of last DGPS update
-  parser.getArg(12, ageDGPS);
+  // // time of last DGPS update
+  // parser.getArg(12, ageDGPS);
 
-  if (blink)
-  {
-    digitalWrite(GGAReceivedLED, HIGH);
-  }
-  else if (atoi(solQuality) != 4)  //no RTK
-  {
-    digitalWrite(GGAReceivedLED, LOW);
-  }
+  // if (blink)
+  // {
+  //   digitalWrite(GGAReceivedLED, HIGH);
+  // }
+  // else if (atoi(solQuality) != 4)  //no RTK
+  // {
+  //   digitalWrite(GGAReceivedLED, LOW);
+  // }
 
-  blink = !blink;
+  // blink = !blink;
 
-  dualReadyGGA = true;
+  //dualReadyGGA = true;
 
-  gpsReadyTime = systick_millis_count; // Used for GGA timeout (LED's ETC)
+  // gpsReadyTime = systick_millis_count; // Used for GGA timeout (LED's ETC)
 
-  if(debugState == GPS)
-    Serial.print("  GGA  ");
+  // if(debugState == GPS)
+  //   Serial.print("  GGA  ");
 
-  TinyGPSloop();
+  // TinyGPSloop();
 }
 
 void VTG_Handler()
@@ -375,3 +380,54 @@ void CalculateChecksum(void)
     010.2,K      Ground speed, Kilometers per hour
      48          Checksum
 */
+
+
+void INS_Handler() // Rec'd GGA
+{
+
+  // latitude
+  parser.getArg(11, latitude);
+  latNS = "N";
+
+  // longitude
+  parser.getArg(12, longitude);
+  lonEW = "E";
+
+  // fix quality
+  //parser.getArg(9, fixQuality); //to enum
+
+  // altitude
+  parser.getArg(13, altitude);
+
+  // roll
+  parser.getArg(18, insRoll);
+
+  // pitch
+  parser.getArg(19, insPitch);
+
+  // heading
+  parser.getArg(20, insHeading);
+
+  // time of last DGPS update
+  parser.getArg(31, ageDGPS);
+
+  if (blink)
+  {
+    digitalWrite(GGAReceivedLED, HIGH);
+  }
+  else if (atoi(solQuality) != 4)  //no RTK
+  {
+    digitalWrite(GGAReceivedLED, LOW);
+  }
+
+  blink = !blink;
+
+  dualReadyGGA = true;
+
+  gpsReadyTime = systick_millis_count; // Used for GGA timeout (LED's ETC)
+
+  if(debugState == GPS)
+    Serial.print("  INS  ");
+
+  TinyGPSloop();
+}

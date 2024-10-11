@@ -18,7 +18,7 @@
 
 /************************* User Settings *************************/
 bool udpPassthrough = false;  // False = GPS neeeds to send GGA, VTG & HPR messages. True = GPS needs to send KSXT messages only.
-bool makeOGI = true;          // Set to true to make PAOGI messages. Else PANDA message will be made.
+bool makeOGI = false;          // Set to true to make PAOGI messages. Else PANDA message will be made.
 const bool invertRoll = true; // Used for IMU with dual antenna
 bool baseLineCheck = false;   // Set to true to use IMU fusion with UM982
 float headingOffset = 0;
@@ -89,6 +89,7 @@ void errorHandler();
 void GGA_Handler();
 void VTG_Handler();
 void HPR_Handler();
+void INS_Handler();
 void autosteerSetup();
 void EthernetStart();
 void udpNtrip();
@@ -222,6 +223,7 @@ void setup()
   parser.addHandler("G-GGA", GGA_Handler);
   parser.addHandler("G-VTG", VTG_Handler);
   parser.addHandler("G-HPR", HPR_Handler);
+  parser.addHandler("INSPVAXA", INS_Handler);
 
   delay(10);
   Serial.begin(baudAOG);
@@ -343,7 +345,7 @@ void checkUM982(){
       SerialGPS->readBytesUntil('\n', incoming, 100);
       //Serial.print("UM982 VERSION: ");
       //Serial.println(incoming);
-      if (strstr(incoming, "UM982") != NULL)
+      if (strstr(incoming, "UM981") != NULL)
       {
         if (baudrate != 460800)
         {
@@ -380,7 +382,7 @@ void configureUM982(){
     if (strstr(incoming, "CONFIG ANTENNADELTAHEN") != NULL)
     {
       Serial.println("Got the config line");
-      if (strstr(incoming, "ANTENNADELTAHEN 0.0099 0.0099 0.009") != NULL)
+      if (strstr(incoming, "CONFIG ANTENNADELTAHEN 2.80") != NULL)
       {
         Serial.println("And it is already configured");
         Serial.println();
@@ -408,13 +410,10 @@ void configureUM982(){
         // Set heading to variablelength
         Serial.println("Setting heading to variablelength");
         //SerialGPS->write("CONFIG HEADING VARIABLELENGTH\r\n");
-        SerialGPS->write("CONFIG HEADING FIXLENGTH\r\n");
+        SerialGPS->write("CONFIG IMUTOANT OFFSET 0 0 0.20 0.01 0.01 0.01\r\n");  // x y z
         delay(100);
 
-        SerialGPS->write("CONFIG HEADING REALIABILITY 3\r\n");
-        delay(100);
-
-        SerialGPS->write("CONFIG HEADING LENGHT 104 2\r\n");
+        SerialGPS->write("CONFIG INS ALIGNMENTVEL 1.0\r\n");  // 1 m/s
         delay(100);
 
         SerialGPS->write("CONFIG PPP ENABLE E6-HAS\r\n");
@@ -426,16 +425,6 @@ void configureUM982(){
         SerialGPS->write("CONFIG PPP CONVERGE 30 50\r\n");
         delay(100);
 
-        // Set heading offset
-        Serial.println("Setting heading offset 90");
-        SerialGPS->write("CONFIG HEADING OFFSET 90\r\n");
-        delay(100);
-
-        // Set heading smoothing
-        Serial.println("Setting heading smoothing");
-        SerialGPS->write("CONFIG SMOOTH HEADING 1\r\n");
-        delay(100);
-
         // Set rtk height smoothing
         Serial.println("Setting rtkheight smoothing");
         SerialGPS->write("CONFIG SMOOTH RTKHEIGHT 10\r\n");
@@ -444,16 +433,6 @@ void configureUM982(){
         // Set COM1 to 460800
         Serial.println("Setting COM1 to 460800 bps");
         SerialGPS->write("CONFIG COM1 460800\r\n");
-        delay(100);
-
-        // Set COM2 to 460800
-        Serial.println("Setting COM2 to 460800 bps");
-        SerialGPS->write("CONFIG COM2 460800\r\n");
-        delay(100);
-
-        // Set COM3 to 460800
-        Serial.println("Setting COM3 to 460800 bps");
-        SerialGPS->write("CONFIG COM3 460800\r\n");
         delay(100);
 
         // Set GGA message and rate
@@ -467,13 +446,13 @@ void configureUM982(){
         delay(100);
 
         // Set HPR message and rate
-        Serial.println("Setting HPR");
-        SerialGPS->write("GPHPR COM1 0.05\r\n");
+        Serial.println("Setting INS");
+        SerialGPS->write("INSPVAXA COM1 0.1\r\n");
         delay(100);
 
         // Setting the flag to signal UM982 is configured for AOG
         Serial.println("Setting UM982 configured flag");
-        SerialGPS->write("CONFIG ANTENNADELTAHEN 0.0099 0.0099 0.009\r\n");
+        SerialGPS->write("CONFIG ANTENNADELTAHEN 2.80\r\n");
         delay(100);
 
         // Saving the configuration in the UM982

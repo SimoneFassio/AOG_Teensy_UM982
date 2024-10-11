@@ -84,7 +84,7 @@ public:
      are not bufferized, 82 - 6 + 1 = 77 chars  are enough.
      is enough.
   */
-  static const uint8_t kSentenceMaxSize = 150;
+  static const uint8_t kSentenceMaxSize = 400;
 
 private:
   /*
@@ -425,7 +425,7 @@ public:
     /* Waiting for the starting $ character */
     case INIT:
       mError = NMEA::NO_ERROR;
-      if (inChar == '$')
+      if (inChar == '$' || inChar == '#')
       {
         mComputedCRC = 0;
         mState = SENT;
@@ -439,7 +439,7 @@ public:
       {
         if (spaceAvail())
         {
-          if (mIndex < 5)
+          if (mIndex < 10)
           {
             mBuffer[mIndex++] = inChar;
             mComputedCRC ^= inChar;
@@ -457,6 +457,11 @@ public:
         switch (inChar)
         {
         case ',':
+          mComputedCRC ^= inChar;
+          mBuffer[--mArgIndex] = mIndex;
+          mState = ARG;
+          break;
+        case ';':
           mComputedCRC ^= inChar;
           mBuffer[--mArgIndex] = mIndex;
           mState = ARG;
@@ -482,6 +487,10 @@ public:
           mComputedCRC ^= inChar;
           mBuffer[--mArgIndex] = mIndex;
           break;
+        case ';':
+          mComputedCRC ^= inChar;
+          mBuffer[--mArgIndex] = mIndex;
+          break;
         case '*':
           mGotCRC = 0;
           mBuffer[--mArgIndex] = mIndex;
@@ -498,6 +507,10 @@ public:
       break;
 
     case CRCH:
+      processSentence();////////////////
+      reset();
+
+
       tmp = hexToNum(inChar);
       if (tmp != -1)
       {

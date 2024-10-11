@@ -166,23 +166,23 @@ void correlationLoop(){
     WTC.add(dualWheelAngleWT61, steerAngleSens);
     KalmanC.add(X, steerAngleSens);
 
-    Serial.print("dualR");
-    Serial.print(dualC.getR());
-    Serial.print("dualA");
-    Serial.print(dualC.getA());
-    Serial.print("dualB");
-    Serial.print(dualC.getB());
-    Serial.print("WTR");
-    Serial.print(WTC.getR());
-    Serial.print("WTA");
-    Serial.print(WTC.getA());
-    Serial.print("WTB");
-    Serial.print(WTC.getB());
-    Serial.print("KalmanR");
-    Serial.print(KalmanC.getR());
-    Serial.print("KalmanA");
-    Serial.print(KalmanC.getA());
-    Serial.print("KalmanB");
-    Serial.print(KalmanC.getB());
+    // Serial.print("dualR");
+    // Serial.print(dualC.getR());
+    // Serial.print("dualA");
+    // Serial.print(dualC.getA());
+    // Serial.print("dualB");
+    // Serial.print(dualC.getB());
+    // Serial.print("WTR");
+    // Serial.print(WTC.getR());
+    // Serial.print("WTA");
+    // Serial.print(WTC.getA());
+    // Serial.print("WTB");
+    // Serial.print(WTC.getB());
+    // Serial.print("KalmanR");
+    // Serial.print(KalmanC.getR());
+    // Serial.print("KalmanA");
+    // Serial.print(KalmanC.getA());
+    // Serial.print("KalmanB");
+    // Serial.print(KalmanC.getB());
   }
 }
