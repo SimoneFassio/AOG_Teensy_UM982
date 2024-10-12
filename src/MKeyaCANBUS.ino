@@ -307,7 +307,8 @@ void KeyaBus_Receive()
         }
         else if (bitRead(KeyaBusReceiveData.buf[6], 6))
         {
-          Serial.println("\r\nCAN disconnected");
+          if(debugState == KEYA)
+            Serial.println("\r\nCAN disconnected");
         }
         else if (bitRead(KeyaBusReceiveData.buf[6], 7))
         {

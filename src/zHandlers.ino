@@ -35,18 +35,13 @@ char umHeading[8];
 char umRoll[8];
 char solQuality[2];
 
-//INS
-char insHeading[8];
-char insRoll[8];
-char insPitch[8];
-
 
 
 // If odd characters showed up.
 void errorHandler()
 {
-  if(debugState == GPS)
-    Serial.println("parser error");
+  //if(debugState == GPS)
+    //Serial.println("parser error");
 }
 
 void GGA_Handler() // Rec'd GGA
@@ -56,11 +51,11 @@ void GGA_Handler() // Rec'd GGA
 
   // // latitude
   // parser.getArg(1, latitude);
-  // parser.getArg(2, latNS);
+  parser.getArg(2, latNS);
 
   // // longitude
   // parser.getArg(3, longitude);
-  // parser.getArg(4, lonEW);
+  parser.getArg(4, lonEW);
 
   // fix quality
   parser.getArg(5, fixQuality);
@@ -92,8 +87,10 @@ void GGA_Handler() // Rec'd GGA
 
   // gpsReadyTime = systick_millis_count; // Used for GGA timeout (LED's ETC)
 
-  // if(debugState == GPS)
-  //   Serial.print("  GGA  ");
+  if(debugState == GPS){
+    Serial.print(systick_millis_count);
+    Serial.print("  GGA  ");
+  }
 
   // TinyGPSloop();
 }
@@ -113,8 +110,10 @@ void VTG_Handler()
   else
     workingDir=1;
 
-  if(debugState == GPS)
+  if(debugState == GPS){
+    Serial.print(systick_millis_count);
     Serial.print("  VTG  ");
+  }
 }
 
 // UM982 Support
@@ -387,11 +386,11 @@ void INS_Handler() // Rec'd GGA
 
   // latitude
   parser.getArg(11, latitude);
-  latNS = "N";
+  //latNS = "N";
 
   // longitude
   parser.getArg(12, longitude);
-  lonEW = "E";
+  //lonEW = "E";
 
   // fix quality
   //parser.getArg(9, fixQuality); //to enum
@@ -426,8 +425,10 @@ void INS_Handler() // Rec'd GGA
 
   gpsReadyTime = systick_millis_count; // Used for GGA timeout (LED's ETC)
 
-  if(debugState == GPS)
-    Serial.print("  INS  ");
+  if(debugState == GPS){
+    Serial.print(systick_millis_count);
+    Serial.print("  INS\n");
+  }
 
   TinyGPSloop();
 }

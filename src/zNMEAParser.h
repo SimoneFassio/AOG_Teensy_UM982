@@ -84,7 +84,7 @@ public:
      are not bufferized, 82 - 6 + 1 = 77 chars  are enough.
      is enough.
   */
-  static const uint8_t kSentenceMaxSize = 400;
+  static const uint16_t kSentenceMaxSize = 400;
 
 private:
   /*
@@ -97,12 +97,12 @@ private:
   /*
      Current index to store a char of the sentence
   */
-  uint8_t mIndex;
+  uint16_t mIndex;
 
   /*
      Current index to store the index of an argument
   */
-  uint8_t mArgIndex;
+  uint16_t mArgIndex;
 
   /*
      A handler to notify a malformed sentence
@@ -180,6 +180,8 @@ private:
     if (mErrorHandler != NULL)
     {
       mErrorHandler();
+      //Serial.print("E");
+      //Serial.print(mError);
     }
   }
 
@@ -340,7 +342,7 @@ public:
                  mDefaultHandler(NULL),
                  mHandlerCount(0),
                  mError(NMEA::NO_ERROR),
-                 mHandleCRC(true),
+                 mHandleCRC(false),
                  mComputedCRC(0),
                  mGotCRC(0)
   {
@@ -509,7 +511,7 @@ public:
     case CRCH:
       processSentence();////////////////
       reset();
-
+      break;
 
       tmp = hexToNum(inChar);
       if (tmp != -1)

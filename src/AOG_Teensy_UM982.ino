@@ -222,7 +222,7 @@ void setup()
   parser.setErrorHandler(errorHandler);
   parser.addHandler("G-GGA", GGA_Handler);
   parser.addHandler("G-VTG", VTG_Handler);
-  parser.addHandler("G-HPR", HPR_Handler);
+  //parser.addHandler("G-HPR", HPR_Handler);
   parser.addHandler("INSPVAXA", INS_Handler);
 
   delay(10);
@@ -278,7 +278,9 @@ void loop()
     }
     else
     {
-      parser << SerialGPS->read();
+      char c = SerialGPS->read();
+      parser << c;
+      //Serial.print(c);
     }
   }
 

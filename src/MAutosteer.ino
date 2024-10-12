@@ -602,6 +602,8 @@ void ReceiveUdp()
   // When ethernet is not running, return directly. parsePacket() will block when we don't
   if (!Ethernet_running)
   {
+    if(debugState == UDP)
+      Serial.println("Ethernet not running");
     return;
   }
 
