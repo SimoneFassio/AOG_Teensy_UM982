@@ -16,9 +16,9 @@ char nmea[100];
 
 // GGA
 char fixTime[12];
-char latitude[15];
+//char latitude[15];
 char latNS[3];
-char longitude[15];
+//char longitude[15];
 char lonEW[3];
 char fixQuality[2];
 char numSats[4];
@@ -66,26 +66,26 @@ void GGA_Handler() // Rec'd GGA
   // HDOP
   parser.getArg(7, HDOP);
 
-  // // altitude
-  // parser.getArg(8, altitude);
+  // altitude
+  parser.getArg(8, altitude);
 
-  // // time of last DGPS update
-  // parser.getArg(12, ageDGPS);
+  // time of last DGPS update
+  parser.getArg(12, ageDGPS);
 
-  // if (blink)
-  // {
-  //   digitalWrite(GGAReceivedLED, HIGH);
-  // }
-  // else if (atoi(solQuality) != 4)  //no RTK
-  // {
-  //   digitalWrite(GGAReceivedLED, LOW);
-  // }
+  if (blink)
+  {
+    digitalWrite(GGAReceivedLED, HIGH);
+  }
+  else if (atoi(solQuality) != 4)  //no RTK
+  {
+    digitalWrite(GGAReceivedLED, LOW);
+  }
 
-  // blink = !blink;
+  blink = !blink;
 
   //dualReadyGGA = true;
 
-  // gpsReadyTime = systick_millis_count; // Used for GGA timeout (LED's ETC)
+  gpsReadyTime = systick_millis_count; // Used for GGA timeout (LED's ETC)
 
   if(debugState == GPS){
     Serial.print(systick_millis_count);

@@ -24,9 +24,9 @@ char pitchPanda[6];
 char yawRatePanda[6];
 
 //INS
-char insHeading[8];
-char insRoll[8];
-char insPitch[8];
+// char insHeading[8];
+// char insRoll[8];
+// char insPitch[8];
 
 
 float rollKalman = 0;

@@ -219,11 +219,11 @@ void setup()
 
   // the dash means wildcard
 
-  parser.setErrorHandler(errorHandler);
+  //parser.setErrorHandler(errorHandler);
   parser.addHandler("G-GGA", GGA_Handler);
   parser.addHandler("G-VTG", VTG_Handler);
   //parser.addHandler("G-HPR", HPR_Handler);
-  parser.addHandler("INSPVAXA", INS_Handler);
+  //parser.addHandler("INSPVAXA", INS_Handler);
 
   delay(10);
   Serial.begin(baudAOG);
@@ -261,6 +261,16 @@ void setup()
 
 }
 
+bool insActive=false;
+int index1;
+int numArg;
+char bufferSERIAL[20];
+char latitude[20];
+char longitude[20];
+char insHeading[20];
+char insRoll[20];
+char insPitch[20];
+
 void loop()
 {
   // Keya support
@@ -279,7 +289,72 @@ void loop()
     else
     {
       char c = SerialGPS->read();
-      parser << c;
+      if(c == '#' || insActive){
+        //Serial.print(" ");
+        //Serial.print(c);
+        //Serial.print(" ");
+        insActive = true;
+        if (c == ';'){
+          numArg = 2;
+          index1=0;
+        }
+        else if(c == ','){
+          index1=0;
+
+          switch(numArg){
+            case 2: //INSstatus
+              Serial.print("INSstatus: ");
+              Serial.println(bufferSERIAL);
+              break;
+            case 4: //latitude
+              Serial.print("latitude: ");
+              for(int g=0; g<20; g++)
+                latitude[g] = bufferSERIAL[g];
+              Serial.println(bufferSERIAL);
+              break;
+            case 5: //longitude
+              Serial.print("longitude: ");
+              for(int g=0; g<20; g++)
+                longitude[g] = bufferSERIAL[g];
+              Serial.println(bufferSERIAL);
+              break;
+            case 11: //roll
+              Serial.print("roll: ");
+              Serial.println(bufferSERIAL);
+              for(int g=0; g<20; g++)
+                insRoll[g] = bufferSERIAL[g];
+              break;
+            case 12: //pitch
+              Serial.print("pitch: ");
+              Serial.println(bufferSERIAL);
+              for(int g=0; g<20; g++)
+                insPitch[g] = bufferSERIAL[g];
+              break;
+            case 13: //heading
+              Serial.print("heading: ");
+              Serial.println(bufferSERIAL);for(int g=0; g<20; g++)
+                insHeading[g] = bufferSERIAL[g];
+              break;
+          }
+
+          numArg++;
+          for(int g=0; g<20; g++)
+            bufferSERIAL[g] = '\0';
+        }
+        else if(c == '*'){
+          insActive = false;
+          for(int g=0; g<20; g++)
+            bufferSERIAL[g] = '\0';
+          dualReadyGGA = true;
+          dualReadyHPR = true;
+        }
+        else{
+          bufferSERIAL[index1] = c;
+          index1++;
+        }
+      }
+      else
+        parser << c;
       //Serial.print(c);
     }
   }
