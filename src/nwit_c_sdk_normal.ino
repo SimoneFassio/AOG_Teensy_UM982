@@ -110,8 +110,8 @@ void loopWT61() {
 				rollWT = fAngle[1] + offsetRollWT;
 			else
 				rollWT = fAngle[0] + offsetRollWT;
-			// Serial.print("rollKF:");
-			// Serial.println(rollWT, 3);
+			//Serial.print("rollWT:");
+			//Serial.println(rollWT, 3);
 			headingWT = fAngle[2];
 		}
 		s_cDataUpdate = 0;

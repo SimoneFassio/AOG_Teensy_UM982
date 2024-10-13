@@ -103,8 +103,8 @@ void angleStimeUpdate(){
     float meanActual = sumActual/(float)bufferLen;
     float meanWT = sumWT/(float)bufferLen;
 
-    if (!steerConfig.InvertWAS) ////////////////////
-      keyaEncoderOffsetNew = keyaEncoderOffset + ((meanDual-meanActual) * steerSettings.steerSensorCounts); //steerSettings.steerSensorCounts;
+    //if (!steerConfig.InvertWAS) ////////////////////
+      //keyaEncoderOffsetNew = keyaEncoderOffset + ((meanWT-meanActual) * steerSettings.steerSensorCounts); //steerSettings.steerSensorCounts;
     keyaEncoderOffsetWT += ((meanWT-meanActual) * steerSettings.steerSensorCounts);
     indexBuffer = 0;
     bufferLen = MAXBUFFERLEN;
@@ -128,18 +128,18 @@ void KalmanUpdate(){
   Xp = X + angleDiff;                         // (PREDICTION) predizione dello stato al prossimo step
   K = Pp/(Pp + R);                            // (CORRECTION) Kalman gain
   P = (1-K)*Pp;                               // (CORRECTION) aggiornamento della varianza dell'errore di filtraggio
-  X = Xp + K*(dualWheelAngle-Xp);             // (CORRECTION) stima di Kalman dell'output del sensore
+  X = Xp + K*(dualWheelAngleWT61-Xp);             // (CORRECTION) stima di Kalman dell'output del sensore
 
-  if (steerConfig.InvertWAS){ ///////////////////////////
-    kalmanErrorSum += K*(dualWheelAngle-Xp); 
-    counter++;
-    if(counter==100){
-      keyaEncoderOffsetNew = keyaEncoderOffset + (kalmanErrorSum/counter * steerSettings.steerSensorCounts);
-      kalmanErrorSum=0;
-      counter=0;
-    }
-    keyaEncoderOffsetNew=0; /////////////////////////////////////////
-  }
+  // if (steerConfig.InvertWAS){ ///////////////////////////
+  //   kalmanErrorSum += K*(dualWheelAngleWT61-Xp);
+  //   counter++;
+  //   if(counter==100){
+  //     keyaEncoderOffsetNew = keyaEncoderOffset + (kalmanErrorSum/counter * steerSettings.steerSensorCounts);
+  //     kalmanErrorSum=0;
+  //     counter=0;
+  //   }
+  //   keyaEncoderOffsetNew=0; /////////////////////////////////////////
+  // }
 
   steerAngleActualOld = (float)(keyaEncoderValue) /  steerSettings.steerSensorCounts;
 

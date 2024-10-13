@@ -199,8 +199,8 @@ void imuHandler()
   {
     if (makeOGI)
     {
-      dtostrf(rollWT, 4, 2, rollPanda);   //rollDual
-      dtostrf(headingDual, 4, 2, headingPanda);
+      strcpy(rollPanda, insRoll);
+      strcpy(headingPanda, insHeading);
     }
     else
     {

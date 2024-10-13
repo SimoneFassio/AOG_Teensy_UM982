@@ -18,7 +18,7 @@
 
 /************************* User Settings *************************/
 bool udpPassthrough = false;  // False = GPS neeeds to send GGA, VTG & HPR messages. True = GPS needs to send KSXT messages only.
-bool makeOGI = false;          // Set to true to make PAOGI messages. Else PANDA message will be made.
+bool makeOGI = true;          // Set to true to make PAOGI messages. Else PANDA message will be made.
 const bool invertRoll = true; // Used for IMU with dual antenna
 bool baseLineCheck = false;   // Set to true to use IMU fusion with UM982
 float headingOffset = 0;
@@ -166,7 +166,7 @@ bool gotUM982 = false;
 bool setUM982 = false;
 
 /* A parser is declared with 4 handlers at most */
-NMEAParser<4> parser;
+NMEAParser<2> parser;
 
 bool blink = false;
 
@@ -265,11 +265,11 @@ bool insActive=false;
 int index1;
 int numArg;
 char bufferSERIAL[20];
-char latitude[20];
-char longitude[20];
-char insHeading[20];
-char insRoll[20];
-char insPitch[20];
+char latitude[16];
+char longitude[16];
+char insHeading[14];
+char insRoll[14];
+char insPitch[14];
 
 void loop()
 {
@@ -297,42 +297,71 @@ void loop()
         if (c == ';'){
           numArg = 2;
           index1=0;
+          for(int g=0; g<20; g++)
+            bufferSERIAL[g] = '\0';
         }
         else if(c == ','){
           index1=0;
 
           switch(numArg){
             case 2: //INSstatus
+            if(debugState == GPS){
               Serial.print("INSstatus: ");
               Serial.println(bufferSERIAL);
+            }
               break;
             case 4: //latitude
+            if(debugState == GPS){
               Serial.print("latitude: ");
-              for(int g=0; g<20; g++)
-                latitude[g] = bufferSERIAL[g];
               Serial.println(bufferSERIAL);
+            }
+            // latitude[0] = bufferSERIAL[0];
+            // latitude[1] = bufferSERIAL[1];
+            // latitude[2] = bufferSERIAL[3];
+            // latitude[3] = bufferSERIAL[4];
+            // latitude[4] = bufferSERIAL[2];
+              for(int g=0; g<12; g++){
+                latitude[g] = bufferSERIAL[g];
+              }
+              latitude[12] = '\0';
+              DegreesToDegMinSec(atof(latitude), latitude, 15);
               break;
             case 5: //longitude
+            if(debugState == GPS){
               Serial.print("longitude: ");
-              for(int g=0; g<20; g++)
-                longitude[g] = bufferSERIAL[g];
               Serial.println(bufferSERIAL);
+            }
+            //longitude[0] = bufferSERIAL[0];
+            //longitude[1] = bufferSERIAL[2];
+            //longitude[2] = bufferSERIAL[3];
+            //longitude[3] = bufferSERIAL[1];
+              for(int g=0; g<12; g++)
+                longitude[g] = bufferSERIAL[g];
+              longitude[12] = '\0';
+              DegreesToDegMinSec(atof(longitude), longitude, 15);
               break;
             case 11: //roll
-              Serial.print("roll: ");
+            if(debugState == GPS){
+              Serial.print("roll:");
               Serial.println(bufferSERIAL);
-              for(int g=0; g<20; g++)
+            }
+              for(int g=0; g<4; g++)
                 insRoll[g] = bufferSERIAL[g];
               break;
             case 12: //pitch
+            if(debugState == GPS){
               Serial.print("pitch: ");
               Serial.println(bufferSERIAL);
-              for(int g=0; g<20; g++)
+            }
+              for(int g=0; g<14; g++)
                 insPitch[g] = bufferSERIAL[g];
               break;
             case 13: //heading
+            if(debugState == GPS){
               Serial.print("heading: ");
-              Serial.println(bufferSERIAL);for(int g=0; g<20; g++)
+              Serial.println(bufferSERIAL);
+            }
+              for(int g=0; g<14; g++)
                 insHeading[g] = bufferSERIAL[g];
               break;
           }
@@ -343,10 +372,8 @@ void loop()
         }
         else if(c == '*'){
           insActive = false;
-          for(int g=0; g<20; g++)
-            bufferSERIAL[g] = '\0';
-          dualReadyGGA = true;
           dualReadyHPR = true;
+          angleStimeUpdate();
         }
         else{
           bufferSERIAL[index1] = c;
@@ -360,10 +387,6 @@ void loop()
   }
 
   udpNtrip();
-
-  // Check for RTK Radio
-  // if (SerialRTK.available())
-  //   SerialGPS->write(SerialRTK.read());
 
   // If both dual messages are ready, send to AgOpen
   if (dualReadyGGA == true && dualReadyHPR == true)
@@ -407,7 +430,7 @@ void checkUM982(){
   for (uint32_t i = 0; i < nrBaudrates; i++)
   {
     baudrate = baudrates[i];
-    Serial.print(F("Checking for UM982 at baudrate: "));
+    Serial.print(F("Checking for UM981 at baudrate: "));
     Serial.println(baudrate);
     SerialGPS->begin(baudrate);
     // Increase the size of the serial buffer to hold longer UM982 config messages
@@ -426,7 +449,7 @@ void checkUM982(){
       {
         if (baudrate != 460800)
         {
-          Serial.println("UM982 baudrate wrong for AOG. Setting to 460800 bps for AOG");
+          Serial.println("UM981 baudrate wrong for AOG. Setting to 460800 bps for AOG");
           SerialGPS->write("CONFIG COM1 460800\r\n");
           delay(100);
           SerialGPS->begin(baudGPS);
@@ -459,7 +482,7 @@ void configureUM982(){
     if (strstr(incoming, "CONFIG ANTENNADELTAHEN") != NULL)
     {
       Serial.println("Got the config line");
-      if (strstr(incoming, "CONFIG ANTENNADELTAHEN 2.80") != NULL)
+      if (strstr(incoming, "CONFIG ANTENNADELTAHEN 2.79") != NULL)
       {
         Serial.println("And it is already configured");
         Serial.println();
@@ -487,7 +510,7 @@ void configureUM982(){
         // Set heading to variablelength
         Serial.println("Setting heading to variablelength");
         //SerialGPS->write("CONFIG HEADING VARIABLELENGTH\r\n");
-        SerialGPS->write("CONFIG IMUTOANT OFFSET 0 0 0.20 0.01 0.01 0.01\r\n");  // x y z
+        SerialGPS->write("CONFIG IMUTOANT OFFSET 0.21 0.78 1.40 0.05 0.05 0.05\r\n");  // x y z
         delay(100);
 
         SerialGPS->write("CONFIG INS ALIGNMENTVEL 1.0\r\n");  // 1 m/s
@@ -514,7 +537,7 @@ void configureUM982(){
 
         // Set GGA message and rate
         Serial.println("Setting GGA");
-        SerialGPS->write("GPGGA COM1 0.1\r\n");
+        SerialGPS->write("GNGGA COM1 0.1\r\n");
         delay(100);
 
         // Set VTG message and rate
@@ -528,8 +551,8 @@ void configureUM982(){
         delay(100);
 
         // Setting the flag to signal UM982 is configured for AOG
-        Serial.println("Setting UM982 configured flag");
-        SerialGPS->write("CONFIG ANTENNADELTAHEN 2.80\r\n");
+        Serial.println("Setting UM981 configured flag");
+        SerialGPS->write("CONFIG ANTENNADELTAHEN 2.79\r\n");
         delay(100);
 
         // Saving the configuration in the UM982
@@ -692,4 +715,15 @@ void debugLoop(){
     Serial.println(" C");
     debugTime = systick_millis_count;
   }
+}
+
+void DegreesToDegMinSec(double x, char* result, int resultSize)
+{
+  int deg = x;
+  double minutesRemainder = abs(x - deg) * 60;
+  // Usa snprintf per formattare il risultato in un buffer di char
+  if(deg<10)
+    snprintf(result, resultSize, "%02d0%02.9f", deg, minutesRemainder);
+  else
+    snprintf(result, resultSize, "%02d%02.9f", deg, minutesRemainder);
 }

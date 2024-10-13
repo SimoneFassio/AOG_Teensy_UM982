@@ -499,7 +499,7 @@ void autosteerLoop()
     }
     else
     {
-      steerAngleActual = (float)(keyaEncoderValue + keyaEncoderOffset) /  steerSettings.steerSensorCounts;
+      steerAngleActual = (float)(keyaEncoderValue) /  steerSettings.steerSensorCounts;
     }
 
     dualWheelAngleV[indexV++]=dualWheelAngle;

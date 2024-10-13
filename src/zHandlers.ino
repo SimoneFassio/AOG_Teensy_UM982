@@ -12,7 +12,7 @@ const char *asciiHex = "0123456789ABCDEF";
 SimpleKalmanFilter rollKF(0.1, 0.1, 0.1);
 
 // the new PANDA sentence buffer
-char nmea[100];
+char nmea[110];
 
 // GGA
 char fixTime[12];
@@ -49,12 +49,12 @@ void GGA_Handler() // Rec'd GGA
   // fix time
   parser.getArg(0, fixTime);
 
-  // // latitude
-  // parser.getArg(1, latitude);
+  // latitude
+  //parser.getArg(1, latitude);
   parser.getArg(2, latNS);
 
-  // // longitude
-  // parser.getArg(3, longitude);
+  // longitude
+  //parser.getArg(3, longitude);
   parser.getArg(4, lonEW);
 
   // fix quality
@@ -76,14 +76,14 @@ void GGA_Handler() // Rec'd GGA
   {
     digitalWrite(GGAReceivedLED, HIGH);
   }
-  else if (atoi(solQuality) != 4)  //no RTK
+  else //if (atoi(solQuality) != 4)  //no RTK
   {
     digitalWrite(GGAReceivedLED, LOW);
   }
 
   blink = !blink;
 
-  //dualReadyGGA = true;
+  dualReadyGGA = true;
 
   gpsReadyTime = systick_millis_count; // Used for GGA timeout (LED's ETC)
 
@@ -114,70 +114,6 @@ void VTG_Handler()
     Serial.print(systick_millis_count);
     Serial.print("  VTG  ");
   }
-}
-
-// UM982 Support
-void HPR_Handler()
-{
-
-  // HPR Heading
-  parser.getArg(1, umHeading);
-
-  headingDualOld = headingDual;
-  headingDual = atof(umHeading) + headingOffset;
-
-  // Solution quality factor
-  parser.getArg(4, solQuality);
-
-  headingDualRate = (headingDual - headingDualOld);
-  if(headingDualRate>300)
-    headingDualRate-=360;
-  if(headingDualRate<-300)
-    headingDualRate+=360;
-  
-  headingDualRate = headingDualRate * 20;  //20Hz update rate
-  headingDualRateSmooth = (headingDualRateSmooth*0.95)+(headingDualRate*0.05);
-
-  if(headingDualRateSmooth>6) //TBD
-    speedCorrect = speed + (headingDualRate/ RAD_TO_DEG * distanceFromCenterRearAxis);
-  else
-    speedCorrect = speed;
-  
-  // if(debugState == EXPERIMENT){
-  //   Serial.print("speed:");
-  //   Serial.print(speed);
-  //   Serial.print(",spedcor:");
-  //   Serial.print(speedCorrect);
-  //   Serial.print(",headingDualRate:");
-  //   Serial.println(headingDualRate);
-  // }
-
-  // HPR Substitute pitch for roll
-  if (parser.getArg(2, umRoll))
-  {
-    rollDual = atof(umRoll); //-0.2
-
-    if(debugState == ROLL){
-      Serial.print("rollDual:");
-      Serial.print(rollDual);
-    }
-
-    rollDual = rollKF.updateEstimate(rollDual);
-
-    if(debugState == ROLL){
-      Serial.print(",rollKF:");
-      Serial.print(rollDual);
-      Serial.print(",angleWT:");
-      Serial.println(rollWT, 3);
-    }
-  }
-  
-  dualReadyHPR = true; // RelPos ready is true so PAOGI will send when the GGA is also ready
-
-  if(debugState == GPS)
-    Serial.print("  HPR  ");
-
-  angleStimeUpdate();
 }
 
 void BuildNmea(void)

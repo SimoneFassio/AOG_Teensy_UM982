@@ -84,7 +84,7 @@ public:
      are not bufferized, 82 - 6 + 1 = 77 chars  are enough.
      is enough.
   */
-  static const uint16_t kSentenceMaxSize = 400;
+  static const uint8_t kSentenceMaxSize = 150;
 
 private:
   /*
@@ -97,12 +97,12 @@ private:
   /*
      Current index to store a char of the sentence
   */
-  uint16_t mIndex;
+  uint8_t mIndex;
 
   /*
      Current index to store the index of an argument
   */
-  uint16_t mArgIndex;
+  uint8_t mArgIndex;
 
   /*
      A handler to notify a malformed sentence
@@ -180,8 +180,6 @@ private:
     if (mErrorHandler != NULL)
     {
       mErrorHandler();
-      //Serial.print("E");
-      //Serial.print(mError);
     }
   }
 
@@ -342,7 +340,7 @@ public:
                  mDefaultHandler(NULL),
                  mHandlerCount(0),
                  mError(NMEA::NO_ERROR),
-                 mHandleCRC(false),
+                 mHandleCRC(true),
                  mComputedCRC(0),
                  mGotCRC(0)
   {
@@ -427,7 +425,7 @@ public:
     /* Waiting for the starting $ character */
     case INIT:
       mError = NMEA::NO_ERROR;
-      if (inChar == '$' || inChar == '#')
+      if (inChar == '$')
       {
         mComputedCRC = 0;
         mState = SENT;
@@ -441,7 +439,7 @@ public:
       {
         if (spaceAvail())
         {
-          if (mIndex < 10)
+          if (mIndex < 5)
           {
             mBuffer[mIndex++] = inChar;
             mComputedCRC ^= inChar;
@@ -459,11 +457,6 @@ public:
         switch (inChar)
         {
         case ',':
-          mComputedCRC ^= inChar;
-          mBuffer[--mArgIndex] = mIndex;
-          mState = ARG;
-          break;
-        case ';':
           mComputedCRC ^= inChar;
           mBuffer[--mArgIndex] = mIndex;
           mState = ARG;
@@ -489,10 +482,6 @@ public:
           mComputedCRC ^= inChar;
           mBuffer[--mArgIndex] = mIndex;
           break;
-        case ';':
-          mComputedCRC ^= inChar;
-          mBuffer[--mArgIndex] = mIndex;
-          break;
         case '*':
           mGotCRC = 0;
           mBuffer[--mArgIndex] = mIndex;
@@ -509,10 +498,6 @@ public:
       break;
 
     case CRCH:
-      processSentence();////////////////
-      reset();
-      break;
-
       tmp = hexToNum(inChar);
       if (tmp != -1)
       {
