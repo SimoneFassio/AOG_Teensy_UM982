@@ -1,16 +1,6 @@
 // Conversion to Hexidecimal
 const char *asciiHex = "0123456789ABCDEF";
 
-
-
-/*
- SimpleKalmanFilter(e_mea, e_est, q);
- e_mea: Measurement Uncertainty 
- e_est: Estimation Uncertainty 
- q: Process Noise
- */
-SimpleKalmanFilter rollKF(0.1, 0.1, 0.1);
-
 // the new PANDA sentence buffer
 char nmea[110];
 
@@ -91,8 +81,6 @@ void GGA_Handler() // Rec'd GGA
     Serial.print(systick_millis_count);
     Serial.print("  GGA  ");
   }
-
-  // TinyGPSloop();
 }
 
 void VTG_Handler()
@@ -315,56 +303,3 @@ void CalculateChecksum(void)
     010.2,K      Ground speed, Kilometers per hour
      48          Checksum
 */
-
-
-void INS_Handler() // Rec'd GGA
-{
-
-  // latitude
-  parser.getArg(11, latitude);
-  //latNS = "N";
-
-  // longitude
-  parser.getArg(12, longitude);
-  //lonEW = "E";
-
-  // fix quality
-  //parser.getArg(9, fixQuality); //to enum
-
-  // altitude
-  parser.getArg(13, altitude);
-
-  // roll
-  parser.getArg(18, insRoll);
-
-  // pitch
-  parser.getArg(19, insPitch);
-
-  // heading
-  parser.getArg(20, insHeading);
-
-  // time of last DGPS update
-  parser.getArg(31, ageDGPS);
-
-  if (blink)
-  {
-    digitalWrite(GGAReceivedLED, HIGH);
-  }
-  else if (atoi(solQuality) != 4)  //no RTK
-  {
-    digitalWrite(GGAReceivedLED, LOW);
-  }
-
-  blink = !blink;
-
-  dualReadyGGA = true;
-
-  gpsReadyTime = systick_millis_count; // Used for GGA timeout (LED's ETC)
-
-  if(debugState == GPS){
-    Serial.print(systick_millis_count);
-    Serial.print("  INS\n");
-  }
-
-  TinyGPSloop();
-}

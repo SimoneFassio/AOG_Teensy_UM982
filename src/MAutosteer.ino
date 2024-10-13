@@ -591,10 +591,6 @@ void autosteerLoop()
   // delay(1);
 } // end of main loop
 
-int currentRoll = 0;
-int rollLeft = 0;
-int steerLeft = 0;
-
 #ifdef ARDUINO_TEENSY41
 // UDP Receive
 void ReceiveUdp()

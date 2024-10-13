@@ -1,4 +1,3 @@
-#include <TinyGPSPlus.h>
 #include "CircularBuffer.hpp"
 #include "Correlation.h"
 
@@ -39,32 +38,6 @@ Correlation WTC;
 Correlation KalmanC;
 
 
-void TinyGPSloop(){
-    double rate;
-    char* ptr; // just a dummy value needed for strtod
-    double lon = strtod(longitude, &ptr);
-    double lat = strtod(latitude, &ptr);
-    double distance = TinyGPSPlus::distanceBetween(lat, lon, latOld, lonOld);
-    // Serial.print("distance:");
-    // Serial.println(distance);
-    if(distance>0.5){ //ho fatto mezzo metro
-      courseTo = TinyGPSPlus::courseTo(latOld, lonOld, lat, lon);
-      if(debugState == EXPERIMENT){
-        Serial.print("course:");
-        Serial.println(courseTo);
-      }
-      rate = (courseOld-courseTo);
-      if(rate>300)
-        rate-=360;
-      if(rate<-300)
-        rate+=360;
-      tinyWheelAngle = atan(rate/RAD_TO_DEG*wheelBase/distance) * RAD_TO_DEG * workingDir;
-      courseOld=courseTo;
-      latOld=lat;
-      lonOld=lon;
-    }
-}
-
 void angleStimeUpdate(){
   dualWheelAngle = atan(headingDualRate/RAD_TO_DEG*wheelBase/speedCorrect) * RAD_TO_DEG * workingDir;
   dualWheelAngleWT61 = atan(headingRateWT/RAD_TO_DEG*wheelBase/speedCorrect*-1) * RAD_TO_DEG * workingDir;
@@ -82,9 +55,7 @@ void angleStimeUpdate(){
   }
 
   if(debugState == EXPERIMENT){
-    Serial.print("tinyAn:");
-    Serial.print(tinyWheelAngle);
-    Serial.print(",DualAn:");
+    Serial.print("DualAn:");
     Serial.print(dualWheelAngle);
     Serial.print(",WTAn:");
     Serial.println(dualWheelAngleWT61);
